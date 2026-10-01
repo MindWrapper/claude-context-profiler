@@ -247,20 +247,36 @@ class Recording:
             viewer_args = [run, "--port", str(viewer_port)]
             if os.environ.get("CCWRAP_OPEN", "1") != "0":
                 viewer_args.append("--open")
-            self.viewer = start_child("ccwrap.serve", viewer_args, viewer_log)
-            page_port = wait_for_port(self.viewer, viewer_log, r"viewer: http://127\.0\.0\.1:(\d+)/", "viewer")
+            say(f"recording to {self.run_dir}")
+            self.start_viewer(viewer_args, viewer_log)
         except OSError as error:
             raise SetupError(f"cannot set up the recording: {error}") from error
-
-        say(f"recording to {self.run_dir}")
-        say(f"live page at http://127.0.0.1:{page_port}/")
         return f"http://127.0.0.1:{port}"
+
+    def start_viewer(self, args: list[str], log: Path) -> None:
+        """Best effort: without the viewer the recording goes on, and the page
+        is built when the session ends."""
+        try:
+            self.viewer = start_child("ccwrap.serve", args, log)
+            page_port = wait_for_port(self.viewer, log, r"viewer: http://127\.0\.0\.1:(\d+)/", "viewer")
+        except (OSError, SetupError) as error:
+            stop_child(self.viewer, 5)
+            self.viewer = None
+            say(f"{error}; the live page is off, the page is built when the session ends")
+            return
+        say(f"live page at http://127.0.0.1:{page_port}/")
 
     def stop(self) -> None:
         # The proxy goes first, so that no call lands after the viewer writes
         # the final page.
         stop_child(self.proxy, 5)
         stop_child(self.viewer, 30)
+
+    def discard(self) -> None:
+        """Remove the run directory of a recording that never started."""
+        if self.run_dir is not None:
+            shutil.rmtree(self.run_dir, ignore_errors=True)
+            self.run_dir = None
 
     def report(self) -> None:
         if self.run_dir is None:
@@ -290,10 +306,12 @@ def record_session(command: list[str], env: dict[str, str], profile: str | None,
         env["ANTHROPIC_BASE_URL"] = recording.start(ccwrap_home(), profile, config_dir, upstream)
     except SetupError as error:
         recording.stop()
+        recording.discard()
         say(f"{error}; running claude without recording")
         return run_claude(command, env)
     except BaseException:
         recording.stop()
+        recording.discard()
         raise
 
     try:
