@@ -1,0 +1,6 @@
+- No assumptions. Ask clarifications.
+- Surface inconsistencies. Present tradeoffs. Push back.
+- Plan inline before coding. 
+- Keep simple. No bloated abstractions.
+- DO NOT modify orthogonal code/comments.
+- Write naive correct algo first -> optimize later.
