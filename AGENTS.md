@@ -124,6 +124,11 @@ sub-agents). Re-check a row there before you change it. Known limits:
 - A bare tool name in `permissions.deny` removes the tool from Claude's context. When tool search is
   active, the schema of a deferred tool can still be in the request. The page must not promise a
   saving that the next recording does not show.
+- Not mapped yet, so the page shows them as not switchable: project skills and commands (the docs
+  say `skillOverrides` reaches them), synced claude.ai skills (`syncClaudeAiSkills: false`), and a
+  plugin that the project's own settings enable (project settings win over the profile).
+- `disableBundledSkills` may leave some listed commands in place, so the page shows the bundled
+  group's saving as a maximum.
 - `skillOverrides` does not reach plugin skills. A plugin skill goes only with its whole plugin, so
   the page offers the plugin, not the single skill.
 
@@ -138,8 +143,10 @@ A new profile is a **copy**, not a link, of the config that the recording ran on
 - from `.claude.json` (for the user's own config, this file is `~/.claude.json`, next to
   `~/.claude`, not inside it): `mcpServers` and the onboarding flags only
 
-Transcripts, history, caches, sessions and credentials stay behind. The user runs
-`claude auth login` once in each new profile. If the target profile already exists, the prompt tells
+Transcripts, history, caches, sessions and credentials stay behind. The user signs in once in each
+new profile with `ccwrap NAME auth login` (a bare `claude auth login` signs in the user's own
+config). Local-scope MCP servers (under `projects` in `.claude.json`) are not copied; the page says
+so for each one. If the target profile already exists, the prompt tells
 Claude to stop and ask before it changes anything.
 
 ## Tests
