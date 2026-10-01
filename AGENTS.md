@@ -45,8 +45,9 @@ $CCWRAP_HOME/recordings/PROFILE/PROJECT/STAMP/   one recording
   the directory that ccwrap started in. STAMP is `YYYYMMDD-HHMMSS`.
 - The launcher chooses the run directory and gives it to the proxy and the viewer.
 - `ccwrap.json` holds `{"profile": NAME or null, "config_dir": absolute path, "project": absolute
-  path, "upstream": URL, "started": ISO 8601}`. The launcher writes it before it starts the proxy.
-  The page reads `config_dir` to know which config a new profile copies from.
+  path, "upstream": URL, "home": absolute CCWRAP_HOME, "started": ISO 8601}`. The launcher writes
+  it before it starts the proxy. The page reads `config_dir` to know which config a new profile
+  copies from, and `home` to know where the new profile goes.
 - With `CLAUDE_CONFIG_DIR` set, Claude Code keeps `.claude.json` inside that directory. The user's
   own config is the exception: `~/.claude.json` sits next to `~/.claude`, not inside it.
 
