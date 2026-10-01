@@ -40,6 +40,7 @@ $CCWRAP_HOME/profiles/NAME/                      a CLAUDE_CONFIG_DIR, incl. its 
 $CCWRAP_HOME/recordings/PROFILE/PROJECT/STAMP/   one recording
     0001.json, 0002.json ...                     one API call each, written by the proxy
     ccwrap.json                                  written by the launcher, see below
+    proxy.log, viewer.log                        the output of the two child processes
     context_profiler.html                        written when the session ends
 ```
 

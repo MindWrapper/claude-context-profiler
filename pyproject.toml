@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Launch Claude Code on a config profile, and record what every request to the model is made of"
 license = "MIT"
 license-files = ["LICENSE"]
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Yan Drugalya" }]
 dependencies = []
