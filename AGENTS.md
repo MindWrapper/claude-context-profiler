@@ -21,9 +21,11 @@ ccwrap -x [NAME] [claude args...] the same, recorded, with the profiler page liv
 ccwrap --ccwrap-help              the ccwrap options and environment variables
 ```
 
-- `-x` / `--xray` comes first. The first word after it that does not start with `-` is the profile
-  name. Everything after the profile name goes to `claude` unchanged.
-- The grammar has no reserved words. Every bare first word is a profile name.
+- `-x` / `--xray` comes first. Only the word right after it can be the profile name, and only if it
+  does not start with `-`. Everything after that goes to `claude` unchanged.
+- The grammar has no reserved words. A bare word in the name position is a profile name if it is a
+  valid one: letters, digits, `.`, `_`, `-`, not starting with `-` or `_`, and not `.` or `..`.
+  Any other word, such as a quoted prompt, goes to `claude`.
 - If profile NAME does not exist, ccwrap stops with an error that lists the existing profiles and
   explains how the page makes one. It never creates a profile on its own, so a typo cannot create
   a new profile.
@@ -86,10 +88,12 @@ later. It runs on macOS, Linux and Windows.
 
 ## Recording is best effort
 
-A broken recorder must never cost the user a session. If the proxy or the viewer cannot start
-(no free port, a directory that cannot be written, `CLAUDE_CODE_USE_BEDROCK` or
-`CLAUDE_CODE_USE_VERTEX` set, which bypass any base URL), ccwrap prints one line that says why and
-runs `claude` without recording. Errors that ccwrap prints are one readable line, not a traceback.
+A broken recorder must never cost the user a session. If the proxy cannot start (no free port, a
+directory that cannot be written, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` or
+`CLAUDE_CODE_USE_FOUNDRY` set, which bypass any base URL), ccwrap prints one line that says why,
+removes the run directory, and runs `claude` without recording. If only the viewer cannot start,
+the recording goes on without the live page, and the launcher builds the page when `claude` exits.
+Errors that ccwrap prints are one readable line, not a traceback.
 
 ## The profile prompt
 
