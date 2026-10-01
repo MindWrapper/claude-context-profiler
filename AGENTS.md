@@ -45,8 +45,10 @@ $CCWRAP_HOME/recordings/PROFILE/PROJECT/STAMP/   one recording
   the directory that ccwrap started in. STAMP is `YYYYMMDD-HHMMSS`.
 - The launcher chooses the run directory and gives it to the proxy and the viewer.
 - `ccwrap.json` holds `{"profile": NAME or null, "config_dir": absolute path, "project": absolute
-  path, "started": ISO 8601}`. The page reads `config_dir` to know which config a new profile copies
-  from.
+  path, "upstream": URL, "started": ISO 8601}`. The launcher writes it before it starts the proxy.
+  The page reads `config_dir` to know which config a new profile copies from.
+- With `CLAUDE_CONFIG_DIR` set, Claude Code keeps `.claude.json` inside that directory. The user's
+  own config is the exception: `~/.claude.json` sits next to `~/.claude`, not inside it.
 
 ## Parts
 
@@ -57,7 +59,15 @@ later. It runs on macOS, Linux and Windows.
   finds `claude.cmd` on Windows, starts the proxy and the viewer as child processes, sets
   `ANTHROPIC_BASE_URL`, runs `claude`, and stops the children when `claude` exits. It stops the proxy
   first, so that no call lands after the viewer writes the final page. If the viewer died, the
-  launcher builds the page itself. It always prints the path of the page.
+  launcher builds the page itself with `profiler.build()`. It prints the path of the page, or, if
+  the session made no API call, one line that says so.
+  - Ports: without `CCWRAP_PORT`, both children get `--port 0` and the launcher reads the real port
+    from the first line each child prints. With `CCWRAP_PORT=N`, the proxy uses N and the viewer N+1.
+  - The proxy prints one line per API call, so its output goes to a log file, never to the terminal
+    that `claude` owns.
+  - Stopping: on POSIX, SIGTERM, then wait, then kill. On Windows, start the children with
+    `CREATE_NEW_PROCESS_GROUP`, send `CTRL_BREAK_EVENT`, wait, then `terminate()`. A plain
+    `terminate()` kills the viewer before it writes the final page.
 - **proxy** (`proxy.py`): forwards each request upstream byte for byte and writes a copy to the run
   directory. It sits in the critical path of the session, so it stays dumb: it parses nothing,
   rewrites nothing and decides nothing. It redacts the auth headers, so credentials never reach the
@@ -87,23 +97,39 @@ changes, and Claude only carries them out: it copies files, merges settings, and
 permissions it needs. Claude does not decide anything, so the same selection always gives the same
 profile. Keep the mapping from item to setting in the profiler, in one place:
 
-| Ticked item               | Change in the new profile                                      |
-|---------------------------|----------------------------------------------------------------|
-| built-in tool             | add its name to `permissions.deny` in `settings.json`          |
-| one MCP tool              | add `mcp__SERVER__TOOL` to `permissions.deny`                  |
-| a whole MCP server        | leave the server out of `mcpServers` in `.claude.json`         |
-| claude.ai connectors      | `"disableClaudeAiConnectors": true` in `settings.json`         |
-| a plugin, or its skills   | set the plugin to `false` in `enabledPlugins`                  |
+All changes go into the new profile's `settings.json` unless the table says otherwise.
 
-Check each mechanism against the current Claude Code documentation before you rely on it, and
-correct this table if the documentation disagrees.
+| Ticked item                   | Change in the new profile                                        |
+|-------------------------------|------------------------------------------------------------------|
+| built-in tool                 | add its bare name to `permissions.deny`                          |
+| the Artifact tool             | `"enableArtifact": false`                                        |
+| one MCP tool                  | add `mcp__SERVER__TOOL` to `permissions.deny`                    |
+| a user-scope MCP server       | leave the server out of `mcpServers` in `.claude.json`           |
+| any other MCP server          | add `mcp__SERVER` to `permissions.deny`                          |
+| one claude.ai connector       | add `mcp__claude_ai_NAME` to `permissions.deny`                  |
+| all claude.ai connectors      | `"disableClaudeAiConnectors": true`                              |
+| a plugin                      | `"NAME@MARKETPLACE": false` in `enabledPlugins`                  |
+| a user skill                  | `"NAME": "off"` in `skillOverrides`                              |
+| the bundled skills            | `"disableBundledSkills": true`                                   |
+| a subagent type               | add `Agent(NAME)` to `permissions.deny`                          |
+
+The source is https://code.claude.com/docs/en/ (permissions, settings, mcp, plugins, skills,
+sub-agents). Re-check a row there before you change it. Known limits:
+
+- A bare tool name in `permissions.deny` removes the tool from Claude's context. When tool search is
+  active, the schema of a deferred tool can still be in the request. The page must not promise a
+  saving that the next recording does not show.
+- `skillOverrides` does not reach plugin skills. A plugin skill goes only with its whole plugin, so
+  the page offers the plugin, not the single skill.
 
 A new profile is a **copy**, not a link, of the config that the recording ran on (`config_dir` in
 `ccwrap.json`). It copies only an allowlist:
 
 - from the config directory: `settings.json`, `settings.local.json`, `CLAUDE.md` and the files it
   imports with `@`, `agents/`, `commands/`, `skills/`, `hooks/`, `plugins/`, `keybindings.json`, and
-  any status line script that `settings.json` refers to
+  any status line script that `settings.json` refers to. `plugins/installed_plugins.json` and
+  `plugins/known_marketplaces.json` hold absolute paths (`installPath`, `installLocation`) into the
+  source directory; rewrite the ones under the source to point into the new profile.
 - from `.claude.json` (for the user's own config, this file is `~/.claude.json`, next to
   `~/.claude`, not inside it): `mcpServers` and the onboarding flags only
 
