@@ -1,15 +1,13 @@
 # ccwrap
 
-`ccwrap` records one Claude Code session to show what every request to the model is made of, and
-helps the user switch off what they do not need. The user runs it once, not every day:
+`ccwrap` is a context profiler for Claude Code. It records one session and shows what every request
+to the model is made of: each part, its estimated tokens and its full text. The context profiler
+page opens in the browser and follows the session live.
 
-1. `ccwrap` records a session on the user's normal config. The context profiler page opens in the
-   browser and follows the session live.
-2. In the page, the user ticks the tools, MCP servers, connectors, plugins, skills and subagents
-   they do not need, and sees the tokens each one costs.
-3. The page shows a prompt. The user pastes it into Claude, and Claude merges the changes into
-   `~/.claude/settings.json`.
-4. From then on the user's plain `claude` starts lean. `ccwrap` again shows the smaller context.
+ccwrap only shows. It changes nothing in the user's config and does not suggest what to switch off;
+what to do about the context is up to the user. The page lets the user tick tools, skills, subagent
+types and MCP servers and copy their kinds and names, one `kind: name` per line, and that is all.
+The README has a short, static guide to the usual settings.
 
 `README.md` is the user-facing spec. Read `docs/common-guidelines-code.md` before you write code. It
 applies to all code here.
@@ -71,11 +69,11 @@ later. It runs on macOS, Linux and Windows.
   `/context_profiler.html` serve the page, and `/status` returns `{"count": N}`.
 - **reader** (`reader.py`): loads a run directory and pairs each request with its response.
 - **profiler** (`profiler.py`): builds `context_profiler.html` for a run. It shows a tree of each
-  request with characters and estimated tokens per node, and it has the selection panel that makes
-  the prompt. Do not call it `profile.py`, because that name shadows the standard library's
-  `profile` module.
-- **switches** (`switches.py`): finds the switchable items in the requests and maps each one to its
-  change, reading `~/.claude` for names only.
+  request with characters and estimated tokens per node, and the full text of the selected node.
+  The listings that Claude Code puts into the prompt (skills, subagent types, deferred tools, MCP
+  server instructions) are split into one node per item, in `LISTINGS`. Each tool and listed item
+  carries a `pick` of kind and name, which the page shows as a checkbox.
+  Do not call it `profile.py`, because that name shadows the standard library's `profile` module.
 
 ## Recording is best effort
 
@@ -85,49 +83,6 @@ directory that cannot be written, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VE
 removes the run directory, and runs `claude` without recording. If only the viewer cannot start,
 the recording goes on without the live page, and the launcher builds the page when `claude` exits.
 Errors that ccwrap prints are one readable line, not a traceback.
-
-## The prompt
-
-The page knows exactly how to switch each item off. The prompt it builds gives Claude the exact
-changes, and Claude only carries them out: it merges them into `~/.claude/settings.json`, shows the
-user what it will change and asks before it writes, and leaves every other key and every other file
-alone. Claude does not decide anything, so the same selection always gives the same change. Keep the
-mapping from item to setting in `switches.py`, in one place:
-
-| Ticked item                   | Change in `~/.claude/settings.json`                              |
-|-------------------------------|------------------------------------------------------------------|
-| built-in tool                 | add its bare name to `permissions.deny`                          |
-| the Artifact tool             | add `Artifact` to `permissions.deny`; this removes `ArtifactComments` and `ArtifactData` too |
-| one MCP tool                  | add `mcp__SERVER__TOOL` to `permissions.deny`                    |
-| an MCP server                 | add `mcp__SERVER` to `permissions.deny`                          |
-| one claude.ai connector       | add `mcp__claude_ai_NAME` to `permissions.deny`                  |
-| all claude.ai connectors      | `"disableClaudeAiConnectors": true`                              |
-| a plugin                      | `"NAME@MARKETPLACE": false` in `enabledPlugins`                  |
-| a user skill                  | `"NAME": "off"` in `skillOverrides`                              |
-| the bundled skills            | `"disableBundledSkills": true`                                   |
-| a subagent type               | add `Agent(NAME)` to `permissions.deny`                          |
-
-Prefer `permissions.deny` where it works: the user can remove an entry mid-session and the tool
-comes back on the next request without breaking the prompt cache (recorded on Claude Code 2.1.306).
-That is why the Artifact tool is not switched off with `enableArtifact: false`, which another
-settings file cannot turn back on, and why an MCP server is denied rather than removed from
-`mcpServers`.
-
-The source is https://code.claude.com/docs/en/ (permissions, settings, mcp, plugins, skills,
-sub-agents). Re-check a row there before you change it. Known limits:
-
-- A bare tool name in `permissions.deny` removes the tool from Claude's context. When tool search is
-  active, the schema of a deferred tool can still be in the request. The page must not promise a
-  saving that the next recording does not show.
-- `switches.py` tells skills apart only by `~/.claude` (user skills) and installed plugins (plugin
-  skills). Every other unprefixed skill, project and synced skills included, counts in the bundled
-  group, and a prefixed skill that is not a plugin's is not listed. `disableBundledSkills` may leave
-  some listed commands in place, so the page shows the bundled group's saving as a maximum.
-- A plugin that the project's own settings enable stays on (project settings win); the page does not
-  detect this yet.
-- `skillOverrides` does not reach plugin skills. A plugin skill goes only with its whole plugin, so
-  the page offers the plugin, not the single skill.
-- ccwrap always reads and edits `~/.claude`. A `CLAUDE_CONFIG_DIR` the user set is not followed.
 
 ## Tests
 

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ccwrap"
 version = "0.1.0"
-description = "See what fills Claude Code's context, and switch off what you don't use"
+description = "See exactly what fills Claude Code's context, recorded and shown on your machine"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"

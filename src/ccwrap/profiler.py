@@ -10,10 +10,6 @@ the rows of a request add up to the real number. The thinking tokens of an
 answer are usually invisible in the recording, because Claude Code asks the API
 to omit the thinking text; whatever the output count cannot be explained by the
 visible answer is put on the thinking node.
-
-The "switch off" panel lists what the user can switch off, with the tokens each
-item costs, and builds the prompt that makes Claude write the changes into the
-user's settings.json. What can be switched off, and how, is decided in switches.py.
 """
 
 from __future__ import annotations
@@ -26,7 +22,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from . import switches
 from .reader import (
     MESSAGES_PATH,
     block_text,
@@ -175,6 +170,84 @@ def split_sections(text: str) -> list[tuple[str, str]]:
     return out if len(out) > 1 else []
 
 
+# --- listings --------------------------------------------------------------
+
+# Lists of things the harness puts into the prompt, one item each: the user can
+# tick an item in the page. (pattern of the header line, label, item kind, form)
+# Forms: "bullets" is "- NAME: description" with continuation lines, "names" is
+# one bare name per line, "headings" is one "## NAME" section per item.
+LISTINGS = [
+    (re.compile(r"^The following skills are available.*:\s*$"), "skills", "skill", "bullets"),
+    (re.compile(r"^Available agent types.*:\s*$"), "subagent types", "subagent", "bullets"),
+    (re.compile(r"^.*deferred tools are now available.*:\s*$", re.I), "deferred tools", "tool", "names"),
+    (re.compile(r"^The following tools just became available.*:\s*$"), "added tools", "tool", "names"),
+    (re.compile(r"^# MCP Server Instructions\s*$"), "MCP servers", "MCP server", "headings"),
+]
+BULLET_RE = re.compile(r"^- (\S+?):(?: |$)")
+NAME_RE = re.compile(r"^\S+$")
+
+
+def tool_kind(name: str) -> str:
+    return "MCP tool" if name.startswith("mcp__") else "tool"
+
+
+def parse_listing(lines: list[str], start: int, form: str) -> tuple[list[tuple[str, str]], int]:
+    """The items of the listing whose header is lines[start], as (name, text),
+    and the index of the line after the listing."""
+    items: list[tuple[str, list[str]]] = []
+    i = start + 1
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    while i < len(lines):
+        line = lines[i]
+        if form == "names":
+            if not NAME_RE.match(line.strip()):
+                break
+            items.append((line.strip(), [line]))
+        elif form == "bullets":
+            found = BULLET_RE.match(line)
+            if found:
+                items.append((found.group(1), [line]))
+            elif line.strip() and items and lines[i - 1].strip():
+                items[-1][1].append(line)  # a description that goes on for more lines
+            elif line.strip():
+                break
+        else:  # headings
+            if line.startswith("## "):
+                items.append((line[3:].strip(), [line]))
+            elif line.startswith("# "):
+                break
+            elif items:
+                items[-1][1].append(line)
+            elif line.strip():
+                break
+        i += 1
+    return [(name, "\n".join(body).strip()) for name, body in items], i
+
+
+def add_listings(item: dict, text: str, path: list[str], store: "Store") -> None:
+    """Give a text node one child per listing in it, and the listing one child
+    per item. Each item carries "pick", which the page offers as a checkbox."""
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        hit = next((entry for entry in LISTINGS if entry[0].match(lines[i])), None)
+        if hit is None:
+            i += 1
+            continue
+        _, label, kind, form = hit
+        items, end = parse_listing(lines, i, form)
+        if items:
+            body = "\n".join(lines[i:end]).strip()
+            listing = node(label, "listing", text_size(body), path + [label], store, text=body)
+            for name, part in items:
+                child = node(name, "item", text_size(part), path + [label, name], store, text=part)
+                child["pick"] = {"kind": tool_kind(name) if kind == "tool" else kind, "name": name}
+                listing["children"].append(child)
+            item["children"].append(listing)
+        i = max(end, i + 1)
+
+
 # --- the tree --------------------------------------------------------------
 
 
@@ -221,7 +294,11 @@ def system_tree(blocks: list, store: Store) -> dict:
         path = ["system", str(i)]
         item = node(label_text(text), "text", wire_size(block), path, store, text=text, raw=block, bp=has_breakpoint(block))
         for name, body in split_sections(text):
-            item["children"].append(node(name, "section", text_size(body), path + [name], store, text=body))
+            section = node(name, "section", text_size(body), path + [name], store, text=body)
+            add_listings(section, body, path + [name], store)
+            item["children"].append(section)
+        if not item["children"]:
+            add_listings(item, text, path, store)
         root["children"].append(item)
     return root
 
@@ -231,6 +308,7 @@ def tools_tree(tools: list, store: Store) -> dict:
     for i, tool in enumerate(tools):
         name = tool.get("name") or tool.get("type") or f"tool {i}"
         child = node(name, "tool", wire_size(tool), ["tools", name], store, text=pretty(tool), bp=has_breakpoint(tool))
+        child["pick"] = {"kind": tool_kind(name), "name": name}
         root["children"].append(child)
     return root
 
@@ -259,11 +337,14 @@ def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str]
         item["text"] = store.put(content)
         item["label"] = f"{i} {role}: {label_text(content)}"
         item["bp"] = has_breakpoint(message)
+        add_listings(item, content, path, store)
         return item
     for j, block in enumerate(content or []):
         label = block_label(block, tool_names)
         kind = block.get("type", "?")
         child = node(label, kind, wire_size(block), path + [str(j)], store, text=block_text(block), raw=block, bp=has_breakpoint(block))
+        if kind == "text":
+            add_listings(child, block.get("text", ""), path + [str(j)], store)
         item["children"].append(child)
     summary = ", ".join(child["label"] for child in item["children"]) or "(empty)"
     item["label"] = f"{i} {role}: {shorten(summary)}"
@@ -367,7 +448,6 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
 
     ratio, ratio_source = chars_per_token(exchanges, position)
     estimate(root, ratio)
-    atoms = switches.scan(body, text_size, wire_size)
     answer = answer_tree(exchange["answer"], store)
     estimate_answer(answer, exchange["row"]["output"], ratio)
     root["children"].append(answer)
@@ -390,8 +470,6 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
         "aborted": bool(record.get("aborted")),
         "status": record.get("status"),
         "stop_reason": exchange["answer"].get("stop_reason"),
-        # Tokens per switchable piece, estimated like the tree's nodes.
-        "atoms": {key: round(chars / ratio) for key, chars in atoms.items()},
     }
     return root
 
@@ -449,6 +527,7 @@ button.on { background:var(--code); }
 .row .bp { font:600 10px/1 ui-monospace, monospace; color:var(--accent); border:1px solid var(--accent);
            border-radius:3px; padding:1px 3px; flex:none; }
 .row .seg { font:10px ui-monospace, monospace; color:var(--muted); flex:none; }
+.row .tick { margin:0; flex:none; cursor:pointer; }
 .pane { padding:1rem 1.5rem; }
 .pane h2 { font-size:1rem; margin:0 0 .3rem; word-break:break-word; }
 .crumbs { color:var(--muted); font:12px ui-monospace, monospace; margin-bottom:.3rem; }
@@ -465,16 +544,6 @@ th { color:var(--muted); font-weight:600; cursor:pointer; user-select:none; }
 th:hover, th.on { color:var(--fg); }
 td a { color:var(--accent); cursor:pointer; }
 .note { color:var(--muted); font-size:12px; margin:.5rem 0; }
-.panel h3 { font-size:.9rem; margin:1rem 0 .2rem; color:var(--muted); text-transform:uppercase; letter-spacing:.03em; }
-.panel label.it { display:grid; grid-template-columns:1.2rem 1fr 5rem; align-items:baseline; gap:.3rem;
-                  padding:.12rem .3rem; border-radius:4px; cursor:pointer; }
-.panel label.it:hover { background:var(--code); }
-.panel label.it.off { cursor:default; color:var(--muted); }
-.panel label.it .num { font:12px ui-monospace, monospace; text-align:right; color:var(--muted); }
-.panel label.it .why { display:block; color:var(--muted); font-size:12px; }
-.panel .actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:.6rem 0; }
-.panel .total { position:sticky; top:0; background:var(--bg); padding:.4rem 0; border-bottom:1px solid var(--line); z-index:1; }
-.panel .total b { font-variant-numeric:tabular-nums; }
 footer { padding:.5rem 1.5rem; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
 """
 
@@ -484,7 +553,7 @@ JS = r"""
     var requests = data.requests, content = data.content;
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { req: 0, path: 'request', sortBySize: false, raw: false, open: {}, paneSort: null, mode: 'node' };
+    var state = { req: 0, path: 'request', sortBySize: false, raw: false, open: {}, paneSort: null, picked: {} };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -556,6 +625,15 @@ JS = r"""
             var caret = el('span', 'caret', item.children.length ? (isOpen(item, depth) ? '▾' : '▸') : '');
             caret.onclick = function (ev) { ev.stopPropagation(); state.open[item.path] = !isOpen(item, depth); renderTree(); };
             lbl.appendChild(caret);
+            if (item.pick) {
+                var tick = el('input', 'tick');
+                tick.type = 'checkbox';
+                tick.checked = !!state.picked[pickKey(item.pick)];
+                tick.title = 'select ' + item.pick.kind + ' ' + item.pick.name;
+                tick.onclick = function (ev) { ev.stopPropagation(); };
+                tick.onchange = function () { togglePick(item.pick, tick.checked); };
+                lbl.appendChild(tick);
+            }
             lbl.appendChild(el('span', 'name', item.label));
             if (item.bp) lbl.appendChild(el('span', 'bp', 'cache'));
             if (item.seg !== undefined && item.seg !== parentSeg) lbl.appendChild(el('span', 'seg', 'seg ' + (item.seg + 1)));
@@ -567,7 +645,7 @@ JS = r"""
             num.title = n(item.chars) + ' chars';
             row.appendChild(num);
             row.appendChild(el('div', 'num', pct(item.tok, total)));
-            row.onclick = function () { state.mode = 'node'; savePick(); select(state.req, item.path); };
+            row.onclick = function () { select(state.req, item.path); };
             box.appendChild(row);
             if (!item.children.length || !isOpen(item, depth)) return;
             var kids = item.children.slice();
@@ -603,8 +681,6 @@ JS = r"""
     }
 
     function renderPane() {
-        $('make').className = state.mode === 'panel' ? 'on' : '';
-        if (state.mode === 'panel') { renderPanel(); return; }
         var pane = $('pane');
         pane.innerHTML = '';
         var r = root(), info = r.info, item = find(r, state.path) || r;
@@ -679,161 +755,39 @@ JS = r"""
         else if (!item.children.length) pane.appendChild(el('p', 'note', 'No content in the recording.'));
     }
 
-    // --- the selection panel and the prompt -------------------------------
-    // The items and their changes come from switches.py. Here the ticks are
-    // collected and the changes assembled; nothing is decided here.
-    var panel = data.panel, items = panel.items, byId = {};
-    items.forEach(function (it) { byId[it.id] = it; });
-    var pick = { ticks: {} };
-    var pickKey = 'panel:' + document.title;
-
-    function savePick() {
-        try { sessionStorage.setItem(pickKey, JSON.stringify({ ticks: pick.ticks, mode: state.mode })); }
-        catch (e) { /* no storage: the ticks live until the next reload */ }
+    // --- selected items ---------------------------------------------------
+    // A tool, skill, subagent type or MCP server can be ticked wherever it shows
+    // up; the same kind and name is one selection across all requests.
+    function pickKey(pick) { return pick.kind + ': ' + pick.name; }
+    function picked() { return Object.keys(state.picked).sort(); }
+    function togglePick(pick, on) {
+        if (on) state.picked[pickKey(pick)] = true; else delete state.picked[pickKey(pick)];
+        renderTree(); renderPickBar(); persist();
     }
-    function loadPick() {
-        try {
-            var p = JSON.parse(sessionStorage.getItem(pickKey));
-            if (p) { pick.ticks = p.ticks || {}; state.mode = p.mode || 'node'; }
-        } catch (e) { /* start empty */ }
+    function renderPickBar() {
+        var count = picked().length;
+        $('copy').disabled = !count;
+        $('copy').textContent = count ? 'copy ' + count + ' selected' : 'copy selected';
+        $('clear').disabled = !count;
     }
-    function coveredByParent(it) {
-        for (var p = it.parent; p; p = byId[p] ? byId[p].parent : null) if (pick.ticks[p]) return true;
-        return false;
-    }
-    function isOn(it) { return !!pick.ticks[it.id] || coveredByParent(it); }
-    function children(id) { return items.filter(function (it) { return it.parent === id; }); }
-    function untickBelow(id) { children(id).forEach(function (c) { delete pick.ticks[c.id]; untickBelow(c.id); }); }
-    // The panel follows the selected request; a request without any switchable
-    // piece (a quota probe, a title call) falls back to the newest one with some.
-    function panelRequest() {
-        if (Object.keys(root().info.atoms).length) return root();
-        for (var i = requests.length - 1; i >= 0; i--) if (Object.keys(requests[i].info.atoms).length) return requests[i];
-        return root();
-    }
-    function tokOf(it, atoms) { return it.atoms.reduce(function (s, a) { return s + (atoms[a] || 0); }, 0); }
-    function seen(it, atoms) { return it.atoms.some(function (a) { return a in atoms; }); }
-    function savedTokens(atoms) {
-        var union = {};
-        items.forEach(function (it) { if (it.change && isOn(it)) it.atoms.forEach(function (a) { union[a] = true; }); });
-        return Object.keys(union).reduce(function (s, a) { return s + (atoms[a] || 0); }, 0);
-    }
-
-    // The changes of the ticked items, in the fixed order of the items. An item
-    // under a ticked group adds nothing: the group's change covers it.
-    function changes() {
-        var deny = [], sets = {}, maps = { enabledPlugins: {}, skillOverrides: {} };
-        items.forEach(function (it) {
-            if (!it.change || !pick.ticks[it.id] || coveredByParent(it)) return;
-            it.change.forEach(function (op) {
-                if (op[0] === 'deny' && deny.indexOf(op[1]) < 0) deny.push(op[1]);
-                else if (op[0] === 'set') sets[op[1]] = op[2];
-                else if (op[0] === 'map') (maps[op[1]] = maps[op[1]] || {})[op[2]] = op[3];
-            });
-        });
-        var patch = {};
-        if (deny.length) patch.permissions = { deny: deny };
-        Object.keys(maps).forEach(function (k) { if (Object.keys(maps[k]).length) patch[k] = maps[k]; });
-        Object.keys(sets).sort().forEach(function (k) { patch[k] = sets[k]; });
-        return patch;
-    }
-
-    function buildPrompt(patch) {
-        var file = panel.settings;
-        var L = [];
-        L.push('Switch off parts of my Claude Code context by editing my user settings file in place.');
-        L.push('Carry out the steps below exactly as written. Do not add, skip or change anything. If a step cannot be done as written, stop and ask me.');
-        L.push('');
-        L.push('Settings file: ' + file);
-        L.push('');
-        L.push('1. Read the settings file. If it does not exist, start from {}. If it is not valid JSON, stop and tell me.');
-        L.push('');
-        L.push('2. Merge this JSON into it:');
-        L.push('');
-        L.push('```json');
-        L.push(JSON.stringify(patch, null, 2));
-        L.push('```');
-        L.push('');
-        L.push('   - "permissions"."deny": append each entry that the array does not hold yet, and keep the entries already there. Create "permissions" and "deny" if they are missing.');
-        L.push('   - "enabledPlugins", "skillOverrides": set each listed key inside the existing object, and keep its other keys. Create the object if it is missing.');
-        L.push('   - Any other key above: set it at the top level, and replace the value that is there.');
-        L.push('   Leave every other key in the file as it is. Do not change any other file, settings.local.json included.');
-        L.push('');
-        L.push('3. Before you write, show me each key you are about to change with its old and new value, and ask me. Write the file only after I say yes.');
-        L.push('');
-        L.push('4. Check that the file you wrote parses as JSON.');
-        L.push('');
-        L.push('5. Tell me to quit and start Claude again, and to run /context to see the smaller context. Tell me that I can bring an item back by deleting its entry from ' + file + '.');
-        return L.join('\n');
-    }
-
-    function renderPanel() {
-        var pane = $('pane'), top = pane.scrollTop;
-        pane.innerHTML = '';
-        var box = el('div', 'panel'), r = panelRequest(), atoms = r.info.atoms;
-        box.appendChild(el('h2', '', 'Switch off what you do not need'));
-        box.appendChild(el('p', 'note', 'Tick what you do not need. Tokens are those of request #' + r.info.index +
-            (r === root() ? '' : ' (the newest request with switchable items)') + '. Pick another request above to see its numbers.'));
-        box.appendChild(el('p', (atoms[panel.tool_search] ? 'note warn' : 'note'),
-            'Limit: denying a tool removes it from the context, but when tool search is active, the schema of a deferred tool can still be in the request. ' +
-            (atoms[panel.tool_search] ? 'This request uses tool search, so a saving on a tool may not show in the next recording.' : 'Run ccwrap again to see the real saving.')));
-
-        var total = el('div', 'total');
-        var s = savedTokens(atoms);
-        total.innerHTML = 'saves about <b>' + n(s) + '</b> of ' + n(r.info.prompt_in) + ' prompt tokens (' + pct(s, r.info.prompt_in) + ')';
-        box.appendChild(total);
-
-        var actions = el('div', 'actions');
-        var copy = el('button', '', 'Copy the prompt');
-        actions.appendChild(copy);
-        box.appendChild(actions);
-
-        var sections = [['builtin', 'Built-in tools'], ['mcp', 'MCP servers'], ['connectors', 'claude.ai connectors'],
-                        ['plugins', 'Plugins'], ['skills', 'Skills'], ['agents', 'Subagent types']];
-        var depth = function (it) { var d = 0; for (var p = it.parent; p; p = byId[p] ? byId[p].parent : null) d++; return d; };
-        sections.forEach(function (sec) {
-            var list = items.filter(function (it) { return it.section === sec[0]; });
-            if (!list.length) return;
-            box.appendChild(el('h3', '', sec[1]));
-            list.forEach(function (it) {
-                var row = el('label', 'it' + (it.change ? '' : ' off'));
-                row.style.paddingLeft = (0.3 + depth(it) * 1.4) + 'rem';
-                var cb = el('input'); cb.type = 'checkbox';
-                cb.checked = isOn(it);
-                cb.disabled = !it.change || coveredByParent(it);
-                cb.onchange = function () {
-                    if (cb.checked) pick.ticks[it.id] = true; else delete pick.ticks[it.id];
-                    untickBelow(it.id);
-                    savePick(); renderPanel();
-                };
-                row.appendChild(cb);
-                var lbl = el('span', '', it.label);
-                if (it.note) lbl.appendChild(el('span', 'why', it.note));
-                row.appendChild(lbl);
-                row.appendChild(el('span', 'num', seen(it, atoms) ? n(tokOf(it, atoms)) : '-'));
-                box.appendChild(row);
-            });
-        });
-
-        box.appendChild(el('h3', '', 'The prompt'));
-        var out = el('div');
-        box.appendChild(out);
-        var patch = changes();
-        copy.disabled = !Object.keys(patch).length;
-        if (copy.disabled) {
-            out.appendChild(el('p', 'note', 'Tick at least one item.'));
+    function copyText(text, done, fail) {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(done, function () { copyByHand(text) ? done() : fail(); });
         } else {
-            var text = buildPrompt(patch);
-            copy.onclick = function () {
-                var done = function () { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy the prompt'; }, 1500); };
-                var fail = function () { copy.textContent = 'Copy failed: select the prompt below'; };
-                if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, fail); else fail();
-            };
-            out.appendChild(el('p', 'note', 'Paste it into Claude Code. Claude changes ' + panel.settings + ' and asks before it writes.'));
-            out.appendChild(el('pre', '', text));
+            copyByHand(text) ? done() : fail();
         }
-        pane.appendChild(box);
-        pane.scrollTop = top;
+    }
+    // For a page opened from disk, where the clipboard API may be missing.
+    function copyByHand(text) {
+        var area = el('textarea');
+        area.value = text;
+        area.style.position = 'fixed'; area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        document.body.removeChild(area);
+        return ok;
     }
 
     function select(req, path) {
@@ -853,7 +807,7 @@ JS = r"""
         try {
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, atEnd: state.req === requests.length - 1, path: state.path,
-                sortBySize: state.sortBySize, open: state.open
+                sortBySize: state.sortBySize, open: state.open, picked: state.picked
             }));
         } catch (e) { /* no storage: the page still works, it just forgets */ }
     }
@@ -863,23 +817,30 @@ JS = r"""
 
     $('sort').onclick = function () { state.sortBySize = !state.sortBySize; state.paneSort = null; $('sort').className = state.sortBySize ? 'on' : ''; renderTree(); renderPane(); persist(); };
     $('expand').onclick = function () { var all = function (it) { state.open[it.path] = true; it.children.forEach(all); }; all(root()); renderTree(); persist(); };
-    $('make').onclick = function () { state.mode = state.mode === 'panel' ? 'node' : 'panel'; savePick(); renderPane(); };
     $('collapse').onclick = function () { state.open = {}; renderTree(); persist(); };
+    $('copy').onclick = function () {
+        var b = $('copy');
+        var back = function () { setTimeout(renderPickBar, 1500); };
+        copyText(picked().join('\n') + '\n',
+                 function () { b.textContent = 'copied'; back(); },
+                 function () { b.textContent = 'copy failed'; back(); });
+    };
+    $('clear').onclick = function () { state.picked = {}; renderTree(); renderPickBar(); persist(); };
     document.addEventListener('keydown', function (ev) {
-        if (ev.target.tagName === 'INPUT') return;
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
     });
-    loadPick();
     var saved = restore();
     if (saved) {
         state.sortBySize = !!saved.sortBySize;
         $('sort').className = state.sortBySize ? 'on' : '';
         state.open = saved.open || {};
+        state.picked = saved.picked || {};
         select(saved.atEnd ? requests.length - 1 : Math.min(saved.req || 0, requests.length - 1), saved.path || 'request');
     } else {
         select(0, 'request');
     }
+    renderPickBar();
 })();
 """
 
@@ -907,7 +868,8 @@ rendered {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>
       <button id="sort">sort by size</button>
       <button id="expand">expand all</button>
       <button id="collapse">collapse</button>
-      <button id="make">switch off</button>
+      <button id="copy" title="copy the kind and name of each selected item, one per line">copy selected</button>
+      <button id="clear">clear</button>
     </div>
     <div id="rows"></div>
   </div>
@@ -934,12 +896,7 @@ def render_run(run_dir: Path) -> str:
         raise ValueError(f"{len(records)} records in {run_dir}, none of them a {MESSAGES_PATH} call")
     exchanges = build_exchanges(calls)
     profile = build_profile(exchanges)
-    seen: dict[str, None] = {}
-    for request in profile["requests"]:
-        seen.update(dict.fromkeys(request["info"]["atoms"]))
-    meta = load_meta(run_dir)
-    profile["panel"] = switches.panel(list(seen), switches.read_config())
-    return render_page(run_dir.resolve(), exchanges, profile, meta)
+    return render_page(run_dir.resolve(), exchanges, profile, load_meta(run_dir))
 
 
 def build(run_dir: Path, out: Path | None = None) -> Path:
