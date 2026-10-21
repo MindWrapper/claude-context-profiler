@@ -1,130 +1,123 @@
 # ccwrap
 
-ccwrap is a launcher for Claude Code. It runs Claude Code on a named config profile, so you can
-keep a lean setup next to your normal one. It also has a context profiler: it records a session
-and shows what every request to the model is made of (system prompt, tool schemas, skills, MCP
-servers, messages), in estimated tokens. You see what your setup costs before you type anything.
+See what fills Claude Code's context before you type a word, and switch off what you don't use.
 
-## The loop
+ccwrap starts one Claude Code session with a recorder in front of it. A page opens in your
+browser and shows every part of each request to the model: system prompt, tools, MCP servers,
+connectors, plugins, skills and subagents, each with its estimated tokens. Tick what you don't
+need and the page gives you a prompt. Paste it into Claude, and Claude writes the changes into
+your settings. After that you don't need ccwrap; your normal `claude` starts lean.
 
-1. Record a session on your normal config: `ccwrap -x`. Claude Code starts as usual.
-2. The profiler page opens in your browser and follows the session as it goes.
-3. In the page, tick the tools, MCP servers, connectors and plugins you do not need. The page
-   shows the tokens each one costs.
-4. Type a profile name. The page shows a prompt. Copy it and paste it into Claude. Claude creates
-   the profile.
-5. Sign in once on the new profile: `ccwrap NAME auth login`.
-6. Record again on the profile to confirm the context is smaller: `ccwrap -x NAME`.
+## Quick start
 
-From then on, `ccwrap NAME` starts Claude Code on the lean profile.
+You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
-## Install
+1. In any project directory, run:
 
-You need Python 3.10 or later (uv fetches one if needed) and Claude Code on your PATH.
+   ```bash
+   uvx --from git+ssh://git@github.com/MindWrapper/ccwrap ccwrap
+   ```
 
-The repo is private for now. Collaborators with access install it from GitHub over SSH.
+   Claude Code starts as usual. Send any message. The page opens in your browser at the first
+   request and follows the session live.
 
-One-off run, nothing installed:
+2. In the page, tick the items you don't need. The page shows what each one costs and the total
+   you save.
 
-    uvx --from git+ssh://git@github.com/MindWrapper/ccwrap ccwrap -x
+3. Copy the prompt from the page and paste it into Claude. Claude adds the changes to
+   `~/.claude/settings.json` and asks before it writes.
 
-Install, so `ccwrap` stays on your PATH:
+4. Quit and start Claude again. Run `/context` to see the smaller context, or run ccwrap again
+   to see the new requests in full.
 
-    uv tool install git+ssh://git@github.com/MindWrapper/ccwrap
-    uv tool upgrade ccwrap          # to update
+The repo is private for now, so step 1 needs SSH access to it. Once it is public, the command
+becomes `uvx ccwrap`.
 
-Once the project is public, this becomes `uv tool install ccwrap`.
+## Other ways to start it
 
-## Usage
+Anything after `ccwrap` goes to `claude` unchanged:
 
-    ccwrap [claude args...]              plain claude
-    ccwrap NAME [claude args...]         claude with CLAUDE_CONFIG_DIR=$CCWRAP_HOME/profiles/NAME
-    ccwrap -x [NAME] [claude args...]    the same, recorded, with the profiler page live in the browser
-    ccwrap --ccwrap-help                 the ccwrap options and environment variables
+```bash
+uvx --from git+ssh://git@github.com/MindWrapper/ccwrap ccwrap --continue
+```
 
-- `-x` (or `--xray`) comes first. Only the word right after it can be the profile name, and only
-  if it does not start with `-`. Everything after that goes to `claude` unchanged.
-- A bare word in the name position is a profile name if it is a valid one: letters, digits, `.`,
-  `_`, `-`, not starting with `-` or `_`. Any other word, such as a quoted prompt, goes to
-  `claude`.
-- If the profile does not exist, ccwrap stops and lists the existing ones. It never creates a
-  profile itself, so a typo cannot make a new one. Profiles are made from the page.
-- ccwrap takes no flags of its own besides `-x` and `--ccwrap-help`, so it never clashes with a
-  `claude` flag. Settings come from the environment:
+To keep `ccwrap` on your PATH instead of fetching it each time:
 
-| Variable      | Meaning                                                              |
-|---------------|----------------------------------------------------------------------|
-| `CCWRAP_HOME` | where profiles and recordings live (default `~/.ccwrap`)             |
-| `CCWRAP_PORT` | the first port to try: the proxy uses N, the viewer N+1 (default: free ports) |
-| `CCWRAP_OPEN` | `0` keeps the browser closed (default: open it at the first API call) |
+```bash
+uv tool install git+ssh://git@github.com/MindWrapper/ccwrap
+```
 
-## Where things live
+Environment variables:
 
-    ~/.ccwrap/profiles/NAME/                      a Claude Code config directory
-    ~/.ccwrap/recordings/PROFILE/PROJECT/STAMP/   one recording
+| Variable      | Meaning                                                                  |
+|---------------|--------------------------------------------------------------------------|
+| `CCWRAP_OPEN` | `0` keeps the browser closed; the terminal prints the page address       |
+| `CCWRAP_PORT` | the first port to try: the recorder uses N, the page N+1 (default: free) |
+| `CCWRAP_HOME` | where recordings are kept (default `~/.ccwrap`)                          |
 
-PROFILE is the profile name, or `_default` for your own config. PROJECT is the name of the
-directory you started in. STAMP is `YYYYMMDD-HHMMSS`. The page of a recording is
-`context_profiler.html` in its directory. The recording also holds one `NNNN.json` per API
-call, a `ccwrap.json` with the run settings, and the proxy and viewer logs.
+For example:
 
-To remove a profile, delete its directory. A profile is a copy of your config, not a link: it
-does not follow later changes to `~/.claude`. It copies settings, `CLAUDE.md`, agents, commands,
-skills, hooks, plugins, keybindings and the MCP server list. Transcripts, history and
-credentials stay behind, which is why you sign in once per profile.
+```bash
+CCWRAP_OPEN=0 uvx --from git+ssh://git@github.com/MindWrapper/ccwrap ccwrap
+```
+
+### The Claude desktop app
+
+Record in a terminal, as above. The changes go into `~/.claude/settings.json`, which the Code
+tab of the desktop app reads too, so they apply there as well. The desktop app adds a few tools
+of its own (browser, session tools) that a terminal recording does not show.
+
+## Getting a tool back
+
+Every change is one entry in `~/.claude/settings.json`. To bring something back, remove its
+entry yourself; Claude may decline to loosen its own permissions.
+
+| You switched off                          | The entry                            | To bring it back                         |
+|-------------------------------------------|--------------------------------------|------------------------------------------|
+| a tool, MCP server, connector or subagent | a name in `permissions.deny`         | delete the name, or use `/permissions`   |
+| a plugin                                  | `"NAME@MARKETPLACE": false` in `enabledPlugins` | set it to `true`, or use `/plugin` |
+| a skill                                   | `"NAME": "off"` in `skillOverrides`  | delete the entry                         |
+| the bundled skills                        | `"disableBundledSkills": true`       | delete the entry                         |
+| all claude.ai connectors                  | `"disableClaudeAiConnectors": true`  | delete the entry                         |
+
+A `permissions.deny` entry works mid-session: remove it and the tool is there on the next
+request, with no restart. Claude Code appends the tool to the conversation, so you pay once for
+its definition and the rest of the conversation stays cached. Put the entry back and the tool
+is blocked again, but its definition stays in the conversation until `/compact` or a new
+session. The other entries may need a new session.
+
+So "off by default, on when I need it" is cheap. Switch off the Artifact tool, and when you want
+to publish a page, delete `"Artifact"` from `permissions.deny` and ask for it.
 
 ## Privacy
 
-A recording contains your prompts, the answers and the contents of files that Claude read.
-Treat the recording directory like your transcripts. Auth headers are redacted before anything
-is written. Nothing leaves your machine except the normal API traffic: the page is a local file
-served on `127.0.0.1`.
+A recording holds your prompts, the answers and the contents of files that Claude read. Treat it
+like your transcripts. Auth headers are redacted before anything is written. Nothing leaves your
+machine except the normal API traffic: the page is served on `127.0.0.1`. Recordings are kept
+under `~/.ccwrap/recordings/`; delete them any time.
 
 ## Limits
 
-- Recording works by pointing Claude Code at a local proxy through `ANTHROPIC_BASE_URL`. It does
-  not work with Bedrock, Vertex or Foundry, which ignore the base URL. If one of those is set,
-  ccwrap says so and runs Claude Code without recording.
-- Recording is best effort. If the proxy cannot start, ccwrap says why and runs Claude Code
-  without it. If only the live page cannot start, the page is built when the session ends.
-- Tool search: denying a tool removes it from Claude's context, but when tool search is active
-  the schema of a deferred tool can still be in the request. Check the next recording for the
-  real saving.
-- The page cannot switch these off yet and shows them as not switchable: project skills and
-  commands, synced claude.ai skills, and a plugin that the project's own settings enable (project
-  settings win over the profile).
+- Recording points Claude Code at a local proxy through `ANTHROPIC_BASE_URL`. It does not work
+  with Bedrock, Vertex or Foundry, which ignore the base URL; ccwrap then says so and runs Claude
+  Code without recording. If the recorder cannot start for any other reason, the same happens:
+  a broken recorder never costs you the session.
+- Most MCP tools are deferred: only their names are in the context until Claude needs one. The
+  page shows what is really in the request, so their savings are small, and that is accurate.
+- The page cannot switch these off yet: project skills and commands, synced claude.ai skills, and
+  a plugin that the project's own settings enable (project settings win over yours).
 - The bundled skills saving is a maximum: some listed commands may stay.
-- A plugin skill goes only with its whole plugin, so the page offers the plugin, not the skill.
-- Local-scope MCP servers (under `projects` in `.claude.json`) are not copied to a profile.
-- Token counts are estimates.
+- A plugin skill goes only with its whole plugin, so the page offers the plugin.
+- Token counts are estimates. `/context` gives Claude Code's own numbers.
 - Windows is supported, but tested by hand.
-
-## How it works
-
-ccwrap starts three things around `claude`:
-
-- A proxy. It forwards each request upstream byte for byte and writes a copy to the recording
-  directory. It sits in the path of your session, so it is kept dumb: it parses nothing, rewrites
-  nothing and decides nothing. It redacts the auth headers.
-- A viewer. A separate process that serves the page and rebuilds it when a new call lands. A
-  slow or broken renderer can never touch your session.
-- A profiler. It reads the recording, builds a tree of each request with estimated tokens per
-  node, and builds the selection panel and the profile prompt. The mapping from an item to the
-  setting that switches it off is in one file, `src/ccwrap/switches.py`.
-
-When `claude` exits, ccwrap stops the proxy first, then the viewer, which writes the final page.
-The package uses only the Python standard library.
 
 ## Development
 
-    python -m unittest discover -s tests
+```bash
+python -m unittest discover -s tests
+```
 
-Run from a checkout:
-
-    uv run ccwrap
-    PYTHONPATH=src python -m ccwrap
-
-See `AGENTS.md` for the design notes.
+Run from a checkout with `uv run ccwrap`. See `AGENTS.md` for the design.
 
 ## License
 
