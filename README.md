@@ -52,7 +52,6 @@ Environment variables:
 | Variable      | Meaning                                                                  |
 |---------------|--------------------------------------------------------------------------|
 | `CCWRAP_OPEN` | `0` keeps the browser closed; the terminal prints the page address       |
-| `CCWRAP_PORT` | the first port to try: the recorder uses N, the page N+1 (default: free) |
 | `CCWRAP_HOME` | where recordings are kept (default `~/.ccwrap`)                          |
 
 For example:

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "ccwrap"
 version = "0.1.0"
-description = "Launch Claude Code on a config profile, and record what every request to the model is made of"
+description = "See what fills Claude Code's context, and switch off what you don't use"
 license = "MIT"
 license-files = ["LICENSE"]
 readme = "README.md"

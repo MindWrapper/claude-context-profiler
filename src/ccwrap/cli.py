@@ -1,9 +1,6 @@
-"""The launcher: runs claude, on a profile if asked, and records the session with -x.
+"""The launcher: runs claude and records the session.
 
     ccwrap [claude args...]
-    ccwrap NAME [claude args...]
-    ccwrap -x [NAME] [claude args...]
-    ccwrap --ccwrap-help
 
 See AGENTS.md, sections "Command line", "Layout on disk" and "Parts".
 """
@@ -23,31 +20,6 @@ from pathlib import Path
 
 from . import profiler
 
-HELP = """\
-ccwrap launches Claude Code, on a named config profile if you ask for one, and can
-record the session to show what every request to the model is made of.
-
-usage:
-  ccwrap [claude args...]            plain claude
-  ccwrap NAME [claude args...]       claude with CLAUDE_CONFIG_DIR=$CCWRAP_HOME/profiles/NAME
-  ccwrap -x [NAME] [claude args...]  the same, recorded, with the profiler page live in the browser
-  ccwrap --ccwrap-help               this text
-
--x / --xray comes first. A bare word right after it, or a bare first word without it,
-is a profile name; everything after that goes to claude unchanged. ccwrap never
-creates a profile: record with `ccwrap -x`, tick what to drop in the page, and paste
-the prompt it shows into Claude.
-
-environment:
-  CCWRAP_HOME   where profiles and recordings live (default ~/.ccwrap)
-  CCWRAP_PORT   the proxy port; the viewer takes the next one (default: free ports)
-  CCWRAP_OPEN   0 keeps the browser closed (default: open it at the first API call)
-
-A recording goes to $CCWRAP_HOME/recordings/PROFILE/PROJECT/STAMP/; the page is
-context_profiler.html in there.
-"""
-
-NAME_RE = re.compile(r"[A-Za-z0-9.][A-Za-z0-9._-]*")
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 # These send the requests to another cloud and ignore ANTHROPIC_BASE_URL.
 OTHER_CLOUDS = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
@@ -65,32 +37,6 @@ def say(message: str) -> None:
 
 def ccwrap_home() -> Path:
     return Path(os.environ.get("CCWRAP_HOME") or "~/.ccwrap").expanduser().absolute()
-
-
-def is_profile_name(word: str) -> bool:
-    return bool(NAME_RE.fullmatch(word)) and word not in (".", "..")
-
-
-def parse(argv: list[str]) -> tuple[bool, str | None, list[str]]:
-    """Split the command line into (record, profile, claude args)."""
-    record = bool(argv) and argv[0] in ("-x", "--xray")
-    if record:
-        argv = argv[1:]
-    # A word that cannot be a profile name, such as a prompt with spaces in it,
-    # goes to claude: it can never be a typo of a profile.
-    if argv and is_profile_name(argv[0]):
-        return record, argv[0], argv[1:]
-    return record, None, argv
-
-
-def missing_profile(name: str, home: Path) -> str:
-    profiles_dir = home / "profiles"
-    names = sorted(p.name for p in profiles_dir.iterdir() if p.is_dir()) if profiles_dir.is_dir() else []
-    existing = ", ".join(names) if names else "none yet"
-    return (
-        f"no profile '{name}' in {profiles_dir} (existing: {existing}). To make one, "
-        "record with `ccwrap -x`, tick what to drop in the page, paste the prompt into Claude"
-    )
 
 
 # --- children ------------------------------------------------------------
@@ -190,8 +136,8 @@ def other_cloud() -> str | None:
     return None
 
 
-def make_run_dir(home: Path, profile: str | None) -> Path:
-    parent = home / "recordings" / (profile or "_default") / Path.cwd().name
+def make_run_dir(home: Path) -> Path:
+    parent = home / "recordings" / Path.cwd().name
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     parent.mkdir(parents=True, exist_ok=True)
     run_dir, n = parent / stamp, 1
@@ -204,15 +150,6 @@ def make_run_dir(home: Path, profile: str | None) -> Path:
             run_dir = parent / f"{stamp}-{n}"
 
 
-def ports() -> tuple[int, int]:
-    raw = os.environ.get("CCWRAP_PORT", "").strip()
-    if not raw:
-        return 0, 0
-    if not raw.isdigit() or not 0 < int(raw) < 65535:
-        raise SetupError(f"CCWRAP_PORT must be a port number, got '{raw}'")
-    return int(raw), int(raw) + 1
-
-
 class Recording:
     """The proxy and the viewer of one recorded session."""
 
@@ -221,30 +158,24 @@ class Recording:
         self.proxy: subprocess.Popen | None = None
         self.viewer: subprocess.Popen | None = None
 
-    def start(self, home: Path, profile: str | None, config_dir: Path, upstream: str) -> str:
+    def start(self, home: Path, upstream: str) -> str:
         """Start both children and return the base URL for claude."""
-        proxy_port, viewer_port = ports()
         try:
-            self.run_dir = make_run_dir(home, profile)
+            self.run_dir = make_run_dir(home)
             meta = {
-                "profile": profile,
-                "config_dir": str(config_dir),
                 "project": str(Path.cwd().absolute()),
                 "upstream": upstream,
-                "home": str(home),
                 "started": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
             (self.run_dir / "ccwrap.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
             run = str(self.run_dir)
             proxy_log = self.run_dir / "proxy.log"
-            self.proxy = start_child(
-                "ccwrap.proxy", [run, "--port", str(proxy_port), "--upstream", upstream], proxy_log
-            )
+            self.proxy = start_child("ccwrap.proxy", [run, "--port", "0", "--upstream", upstream], proxy_log)
             port = wait_for_port(self.proxy, proxy_log, r"proxy: listening on http://127\.0\.0\.1:(\d+)", "proxy")
 
             viewer_log = self.run_dir / "viewer.log"
-            viewer_args = [run, "--port", str(viewer_port)]
+            viewer_args = [run, "--port", "0"]
             if os.environ.get("CCWRAP_OPEN", "1") != "0":
                 viewer_args.append("--open")
             say(f"recording to {self.run_dir}")
@@ -294,7 +225,7 @@ class Recording:
         say(f"page: {page}")
 
 
-def record_session(command: list[str], env: dict[str, str], profile: str | None, config_dir: Path) -> int:
+def record_session(command: list[str], env: dict[str, str]) -> int:
     cloud = other_cloud()
     if cloud:
         say(f"{cloud} is set, so the requests bypass any base URL; running claude without recording")
@@ -303,7 +234,7 @@ def record_session(command: list[str], env: dict[str, str], profile: str | None,
     upstream = os.environ.get("ANTHROPIC_BASE_URL") or DEFAULT_UPSTREAM
     recording = Recording()
     try:
-        env["ANTHROPIC_BASE_URL"] = recording.start(ccwrap_home(), profile, config_dir, upstream)
+        env["ANTHROPIC_BASE_URL"] = recording.start(ccwrap_home(), upstream)
     except SetupError as error:
         recording.stop()
         recording.discard()
@@ -323,32 +254,15 @@ def record_session(command: list[str], env: dict[str, str], profile: str | None,
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] == ["--ccwrap-help"]:
-        print(HELP, end="")
-        return 0
-
-    record, profile, claude_args = parse(argv)
-    home = ccwrap_home()
     env = dict(os.environ)
-    if profile:
-        config_dir = home / "profiles" / profile
-        if not config_dir.is_dir():
-            say(missing_profile(profile, home))
-            return 2
-        env["CLAUDE_CONFIG_DIR"] = str(config_dir)
-    else:
-        config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser().absolute()
-
     claude = shutil.which("claude")
     if not claude:
         say("claude is not on PATH. See https://code.claude.com/docs/en/setup")
         return 127
-    command = [claude, *claude_args]
+    command = [claude, *argv]
 
     try:
-        if record:
-            return record_session(command, env, profile, config_dir)
-        return run_claude(command, env)
+        return record_session(command, env)
     except KeyboardInterrupt:
         return 130
     except OSError as error:

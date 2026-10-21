@@ -1,24 +1,19 @@
-"""What the user can switch off in a new profile, and how.
+"""What the user can switch off in their settings, and how.
 
 This is the one place that maps an item of the request to the change that
-switches it off (AGENTS.md, "The profile prompt"). The page only collects the
+switches it off (AGENTS.md, "The prompt"). The page only collects the
 ticks and assembles the changes that this module names; it decides nothing.
 
 Two inputs:
 - the request, which says what is in the context and how big it is;
-- the config the recording ran on (`config_dir` in ccwrap.json), read only for
-  names, which says where an item comes from. The request alone cannot tell a
-  user skill from a bundled one, the marketplace of a plugin, or the scope of
-  an MCP server.
-
-An item that cannot be traced to a row of the table is shown as "not
-switchable here" with the reason, instead of being guessed.
+- the user's config, ~/.claude, read only for names, which says where an item
+  comes from. The request alone cannot tell a user skill from a bundled one, or
+  the marketplace of a plugin.
 """
 
 from __future__ import annotations
 
 import json
-import os
 import re
 from pathlib import Path
 
@@ -30,8 +25,9 @@ MCP_MARK = "# MCP Server Instructions"
 DEFERRED_RE = re.compile(r"^.*deferred tools are now available.*:\s*$", re.M | re.I)
 CONNECTOR_PREFIX = "claude_ai_"
 PLUGIN_PREFIX = "plugin_"
-SYNCED_PREFIX = "anthropic-skills:"
 ARTIFACT_TOOL = "Artifact"
+# Denying Artifact removes these too (recorded on Claude Code 2.1.306).
+ARTIFACT_COMPANIONS = ("ArtifactComments", "ArtifactData")
 TOOL_SEARCH = "ToolSearch"
 
 
@@ -47,7 +43,7 @@ def server_of(tool: str) -> str | None:
     return rest.split("__", 1)[0] if "__" in rest else None
 
 
-# --- the config the recording ran on -------------------------------------------
+# --- the user's config --------------------------------------------------------
 
 
 def read_json(path: Path) -> dict:
@@ -77,63 +73,14 @@ def enabled_plugins(settings: dict) -> list[str]:
     return [key for key, on in (settings.get("enabledPlugins") or {}).items() if on is True]
 
 
-def read_config(meta: dict) -> dict:
-    """What the page needs to know about the source config. Names only."""
-    notes = []
-    if meta.get("config_dir"):
-        source = Path(meta["config_dir"])
-    else:
-        source = Path.home() / ".claude"
-        notes.append(f"ccwrap.json has no config_dir: the profile copies from {source}, the default config.")
-    if meta.get("home"):
-        home = Path(meta["home"])
-    else:
-        home = Path(os.environ.get("CCWRAP_HOME") or Path.home() / ".ccwrap")
-        notes.append(f"ccwrap.json has no home: the profile goes to {home / 'profiles'}.")
-    if not source.is_dir():
-        notes.append(f"The source config {source} does not exist on this machine now.")
-
-    # The user's own config keeps .claude.json next to ~/.claude, not inside it.
-    own = Path.home() / ".claude"
-    is_own = os.path.normcase(os.path.abspath(source)) == os.path.normcase(os.path.abspath(own))
-    claude_json = Path.home() / ".claude.json" if is_own else source / ".claude.json"
-    state = read_json(claude_json)
-
-    project = Path(meta["project"]) if meta.get("project") else None
-    if project is None:
-        notes.append("ccwrap.json has no project: a project skill cannot be told from a bundled one.")
-    local_servers: list[str] = []
-    project_plugins: list[str] = []
-    project_skills: set[str] = set()
-    if project is not None:
-        local_servers = list((((state.get("projects") or {}).get(str(project)) or {}).get("mcpServers") or {}))
-        local_servers += list(read_json(project / ".mcp.json").get("mcpServers") or {})
-        for name in ("settings.json", "settings.local.json"):
-            project_plugins += enabled_plugins(read_json(project / ".claude" / name))
-        project_skills = skill_names(project / ".claude")
-
-    synced = set()
-    synced_dir = source / "skills" / "synced"
-    if synced_dir.is_dir():
-        for account in synced_dir.iterdir():
-            if account.is_dir():
-                synced.update(p.name for p in account.iterdir() if (p / "SKILL.md").is_file())
-
+def read_config() -> dict:
+    """What the page needs to know about the user's config. Names only."""
+    source = Path.home() / ".claude"
     return {
-        "source": str(source),
-        "claude_json": str(claude_json),
-        "own": is_own,
-        "profiles": str(home / "profiles"),
-        "sep": os.sep,
-        "notes": notes,
+        "settings": str(source / "settings.json"),
         "installed": list((read_json(source / "plugins" / "installed_plugins.json").get("plugins") or {})),
         "enabled": enabled_plugins(read_json(source / "settings.json")),
-        "project_plugins": project_plugins,
         "user_skills": skill_names(source),
-        "project_skills": project_skills,
-        "synced_skills": synced,
-        "user_servers": list(state.get("mcpServers") or {}),
-        "local_servers": local_servers,
     }
 
 
@@ -242,17 +189,14 @@ def scan_instructions(text: str, at: int, servers: set[str], atoms: dict[str, in
 
 # --- items and their changes ---------------------------------------------------
 #
-# A change is a list of operations the page applies to the new profile:
-#   ["deny", RULE]                 add RULE to permissions.deny in settings.json
-#   ["set", KEY, VALUE]            top-level KEY in settings.json
-#   ["map", KEY, NAME, VALUE]      NAME inside the object KEY in settings.json
-#   ["drop_server", NAME]          leave NAME out of mcpServers in .claude.json
-# This is the table in AGENTS.md, "The profile prompt", row by row.
+# A change is a list of operations the page applies to the user's settings.json:
+#   ["deny", RULE]                 add RULE to permissions.deny
+#   ["set", KEY, VALUE]            top-level KEY
+#   ["map", KEY, NAME, VALUE]      NAME inside the object KEY
+# This is the table in AGENTS.md, "The prompt", row by row.
 
 
 def change_builtin(name: str) -> list:
-    if name == ARTIFACT_TOOL:
-        return [["set", "enableArtifact", False]]
     return [["deny", name]]
 
 
@@ -260,9 +204,7 @@ def change_mcp_tool(tool: str) -> list:
     return [["deny", tool]]
 
 
-def change_server(server: str, user_servers: dict[str, str]) -> list:
-    if server in user_servers:
-        return [["drop_server", user_servers[server]]]
+def change_server(server: str) -> list:
     return [["deny", "mcp__" + server]]
 
 
@@ -317,8 +259,6 @@ def build_items(atom_ids: list[str], config: dict) -> list[dict]:
     """Every switchable item seen in the run, in a fixed order, with the atoms
     it covers (its members' atoms included) and its change."""
     installed = config["installed"]
-    user_servers = {normalize(name): name for name in config["user_servers"]}
-    local_servers = {normalize(name) for name in config["local_servers"]}
     tools = [a[5:] for a in atom_ids if a.startswith("tool:")]
     skills = [a[6:] for a in atom_ids if a.startswith("skill:")]
     agents = [a[6:] for a in atom_ids if a.startswith("agent:")]
@@ -327,11 +267,20 @@ def build_items(atom_ids: list[str], config: dict) -> list[dict]:
     plugin_atoms: dict[str, list[str]] = {}
     plugin_servers: dict[str, list[dict]] = {}
 
-    # Built-in tools.
-    for name in tools:
-        if server_of(name) is None and not name.startswith("mcp__"):
-            note = "switched off with enableArtifact" if name == ARTIFACT_TOOL else None
-            items.append(item("tool:" + name, "builtin", name, change_builtin(name), ["tool:" + name], note=note))
+    # Built-in tools. The Artifact tool takes its companions with it.
+    builtins = [name for name in tools if server_of(name) is None and not name.startswith("mcp__")]
+    companions = [name for name in ARTIFACT_COMPANIONS if name in builtins] if ARTIFACT_TOOL in builtins else []
+    for name in builtins:
+        if name in companions:
+            continue
+        if name != ARTIFACT_TOOL:
+            items.append(item("tool:" + name, "builtin", name, change_builtin(name), ["tool:" + name]))
+            continue
+        note = "also removes " + " and ".join(companions) if companions else None
+        atoms = ["tool:" + n for n in [name, *companions]]
+        items.append(item("tool:" + name, "builtin", name, change_builtin(name), atoms, note=note))
+        for c in companions:
+            items.append(item("tool:" + c, "builtin", c, change_builtin(c), ["tool:" + c], parent="tool:" + name))
 
     # MCP servers and their tools, connectors, plugin servers.
     by_server: dict[str, list[str]] = {}
@@ -357,45 +306,26 @@ def build_items(atom_ids: list[str], config: dict) -> list[dict]:
         if server.startswith(PLUGIN_PREFIX):
             key = plugin_of(server, installed, is_server=True)
             if key:
-                server_item = item("server:" + server, "plugins", server, change_server(server, user_servers), atoms, parent="plugin:" + key)
+                server_item = item("server:" + server, "plugins", server, change_server(server), atoms, parent="plugin:" + key)
                 plugin_servers.setdefault(key, []).append(server_item)
                 plugin_atoms.setdefault(key, []).extend(atoms)
                 continue
-            note = "a plugin server, but not of a plugin installed in the source config: switched off by name only"
-        elif server in user_servers:
-            note = "user scope: left out of mcpServers"
-        elif server in local_servers:
-            note = "local or project scope: denied by name"
-        else:
-            note = "not in the source config (built in or added by Claude Code): denied by name"
-        items.append(item("server:" + server, "mcp", server, change_server(server, user_servers), atoms, note=note))
+        items.append(item("server:" + server, "mcp", server, change_server(server), atoms))
         for t in names:
             items.append(item("tool:" + t, "mcp", t[len("mcp__" + server + "__") :], change_mcp_tool(t), ["tool:" + t], parent="server:" + server))
 
-    # Skills: plugin skills go with their plugin, user skills one by one,
-    # bundled skills as one group. The rest cannot be switched off from here.
-    user, bundled, fixed = [], [], []
+    # Skills: plugin skills go with their plugin, user skills one by one, and
+    # every other unprefixed skill in the bundled group. A prefixed skill that is
+    # not a plugin's is left out.
+    user, bundled = [], []
     for name in skills:
         prefix = name.split(":", 1)[0] if ":" in name else None
-        if prefix is not None:
-            key = plugin_of(prefix, installed, is_server=False)
-            if key:
-                plugin_atoms.setdefault(key, []).append("skill:" + name)
-            elif name.startswith(SYNCED_PREFIX):
-                fixed.append((name, "synced from claude.ai: switch it off in the claude.ai skill settings"))
-            elif name in config["user_skills"]:
-                user.append(name)
-            elif name in config["project_skills"]:
-                fixed.append((name, "project command: it lives in the repository, not in the profile"))
-            else:
-                fixed.append((name, f"'{prefix}' is not a plugin installed in the source config (synced from claude.ai or a directory-scoped skill)"))
+        key = plugin_of(prefix, installed, is_server=False) if prefix else None
+        if key:
+            plugin_atoms.setdefault(key, []).append("skill:" + name)
         elif name in config["user_skills"]:
             user.append(name)
-        elif name in config["project_skills"]:
-            fixed.append((name, "project skill: it lives in the repository, not in the profile"))
-        elif name in config["synced_skills"]:
-            fixed.append((name, "synced from claude.ai: switch it off in the claude.ai skill settings"))
-        else:
+        elif prefix is None:
             bundled.append(name)
     for name in user:
         items.append(item("skill:" + name, "skills", name, change_user_skill(name), ["skill:" + name], note="user skill"))
@@ -403,7 +333,7 @@ def build_items(atom_ids: list[str], config: dict) -> list[dict]:
         items.append(
             item(
                 "bundled", "skills", "bundled skills", change_bundled_skills(), ["skill:" + n for n in bundled],
-                note="every listed skill that is not a user, project, plugin or synced skill; some of them may be built-in commands that stay",
+                note="every listed skill that is not a user or plugin skill; some of them may be built-in commands, project or synced skills that stay",
             )
         )
         for name in bundled:
@@ -417,21 +347,13 @@ def build_items(atom_ids: list[str], config: dict) -> list[dict]:
             plugin_atoms.setdefault(key, []).append("agent:" + name)
     keys = [k for k in config["enabled"]] + [k for k in plugin_atoms if k not in config["enabled"]]
     for key in keys:
-        if key in config["project_plugins"]:
-            note = "the project's settings enable it too, and they win over the profile: it stays on"
-        elif not plugin_atoms.get(key):
-            note = "nothing of it in the request"
-        else:
-            note = None
+        note = None if plugin_atoms.get(key) else "nothing of it in the request"
         items.append(item("plugin:" + key, "plugins", key, change_plugin(key), plugin_atoms.get(key, []), note=note))
         items += plugin_servers.get(key, [])
 
     # Subagent types.
     for name in agents:
         items.append(item("agent:" + name, "agents", name, change_subagent(name), ["agent:" + name]))
-
-    for name, reason in fixed:
-        items.append(item("fixed:" + name, "fixed", name, None, ["skill:" + name], note=reason))
     return items
 
 
@@ -439,13 +361,7 @@ def panel(atom_ids: list[str], config: dict) -> dict:
     """The data of the selection panel. Sets become lists so it goes into JSON."""
     return {
         "items": build_items(atom_ids, config),
-        "source": config["source"],
-        "claude_json": config["claude_json"],
-        "own": config["own"],
-        "profiles": config["profiles"],
-        "sep": config["sep"],
-        "notes": config["notes"],
-        "user_servers": sorted(config["user_servers"]),
+        "settings": config["settings"],
         "tool_search": "tool:" + TOOL_SEARCH,
     }
 

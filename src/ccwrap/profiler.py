@@ -11,9 +11,9 @@ answer are usually invisible in the recording, because Claude Code asks the API
 to omit the thinking text; whatever the output count cannot be explained by the
 visible answer is put on the thinking node.
 
-The "make a profile" panel lists what the user can switch off, with the tokens
-each item costs, and builds the prompt that makes a lean profile. What can be
-switched off, and how, is decided in switches.py.
+The "switch off" panel lists what the user can switch off, with the tokens each
+item costs, and builds the prompt that makes Claude write the changes into the
+user's settings.json. What can be switched off, and how, is decided in switches.py.
 """
 
 from __future__ import annotations
@@ -472,9 +472,7 @@ td a { color:var(--accent); cursor:pointer; }
 .panel label.it.off { cursor:default; color:var(--muted); }
 .panel label.it .num { font:12px ui-monospace, monospace; text-align:right; color:var(--muted); }
 .panel label.it .why { display:block; color:var(--muted); font-size:12px; }
-.panel .name { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:.6rem 0; }
-.panel input[type=text] { font:13px ui-monospace, monospace; padding:.3rem .5rem; border:1px solid var(--line);
-                          border-radius:6px; background:var(--bg); color:var(--fg); min-width:14rem; }
+.panel .actions { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; margin:.6rem 0; }
 .panel .total { position:sticky; top:0; background:var(--bg); padding:.4rem 0; border-bottom:1px solid var(--line); z-index:1; }
 .panel .total b { font-variant-numeric:tabular-nums; }
 footer { padding:.5rem 1.5rem; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
@@ -605,8 +603,8 @@ JS = r"""
     }
 
     function renderPane() {
-        $('make').className = state.mode === 'profile' ? 'on' : '';
-        if (state.mode === 'profile') { renderPanel(); return; }
+        $('make').className = state.mode === 'panel' ? 'on' : '';
+        if (state.mode === 'panel') { renderPanel(); return; }
         var pane = $('pane');
         pane.innerHTML = '';
         var r = root(), info = r.info, item = find(r, state.path) || r;
@@ -681,30 +679,23 @@ JS = r"""
         else if (!item.children.length) pane.appendChild(el('p', 'note', 'No content in the recording.'));
     }
 
-    // --- the selection panel and the profile prompt -----------------------
+    // --- the selection panel and the prompt -------------------------------
     // The items and their changes come from switches.py. Here the ticks are
     // collected and the changes assembled; nothing is decided here.
     var panel = data.panel, items = panel.items, byId = {};
     items.forEach(function (it) { byId[it.id] = it; });
-    var pick = { ticks: {}, name: '' };
-    var NAME_RE = /^[A-Za-z0-9.][A-Za-z0-9._-]*$/;
-    var pickKey = 'profile-panel:' + document.title;
+    var pick = { ticks: {} };
+    var pickKey = 'panel:' + document.title;
 
     function savePick() {
-        try { sessionStorage.setItem(pickKey, JSON.stringify({ ticks: pick.ticks, name: pick.name, mode: state.mode })); }
+        try { sessionStorage.setItem(pickKey, JSON.stringify({ ticks: pick.ticks, mode: state.mode })); }
         catch (e) { /* no storage: the ticks live until the next reload */ }
     }
     function loadPick() {
         try {
             var p = JSON.parse(sessionStorage.getItem(pickKey));
-            if (p) { pick.ticks = p.ticks || {}; pick.name = p.name || ''; state.mode = p.mode || 'node'; }
+            if (p) { pick.ticks = p.ticks || {}; state.mode = p.mode || 'node'; }
         } catch (e) { /* start empty */ }
-    }
-    function nameProblem(name) {
-        if (!name) return 'Type a name for the new profile.';
-        if (!NAME_RE.test(name) || name === '.' || name === '..')
-            return 'Use letters, digits, ".", "_" and "-", and do not start with "-" or "_".';
-        return '';
     }
     function coveredByParent(it) {
         for (var p = it.parent; p; p = byId[p] ? byId[p].parent : null) if (pick.ticks[p]) return true;
@@ -731,75 +722,48 @@ JS = r"""
     // The changes of the ticked items, in the fixed order of the items. An item
     // under a ticked group adds nothing: the group's change covers it.
     function changes() {
-        var deny = [], sets = {}, maps = { enabledPlugins: {}, skillOverrides: {} }, drop = [];
+        var deny = [], sets = {}, maps = { enabledPlugins: {}, skillOverrides: {} };
         items.forEach(function (it) {
             if (!it.change || !pick.ticks[it.id] || coveredByParent(it)) return;
             it.change.forEach(function (op) {
                 if (op[0] === 'deny' && deny.indexOf(op[1]) < 0) deny.push(op[1]);
                 else if (op[0] === 'set') sets[op[1]] = op[2];
                 else if (op[0] === 'map') (maps[op[1]] = maps[op[1]] || {})[op[2]] = op[3];
-                else if (op[0] === 'drop_server' && drop.indexOf(op[1]) < 0) drop.push(op[1]);
             });
         });
         var patch = {};
         if (deny.length) patch.permissions = { deny: deny };
         Object.keys(maps).forEach(function (k) { if (Object.keys(maps[k]).length) patch[k] = maps[k]; });
         Object.keys(sets).sort().forEach(function (k) { patch[k] = sets[k]; });
-        return { patch: patch, drop: drop };
+        return patch;
     }
 
-    function buildPrompt(name) {
-        var src = panel.source, sep = panel.sep, cj = panel.claude_json;
-        var tgt = panel.profiles + sep + name;
-        var c = changes(), hasPatch = Object.keys(c.patch).length > 0;
-        var q = function (s) { return JSON.stringify(s); };
+    function buildPrompt(patch) {
+        var file = panel.settings;
         var L = [];
-        L.push('Create a new Claude Code config profile named "' + name + '" by copying an existing config directory.');
+        L.push('Switch off parts of my Claude Code context by editing my user settings file in place.');
         L.push('Carry out the steps below exactly as written. Do not add, skip or change anything. If a step cannot be done as written, stop and ask me.');
         L.push('');
-        L.push('Source config directory (SRC): ' + src);
-        L.push('Source .claude.json: ' + cj);
-        L.push('Target profile directory (TGT): ' + tgt);
+        L.push('Settings file: ' + file);
         L.push('');
-        L.push('1. If TGT already exists, stop and ask me before you change anything. Otherwise create TGT, with any missing parent directories.');
+        L.push('1. Read the settings file. If it does not exist, start from {}. If it is not valid JSON, stop and tell me.');
         L.push('');
-        L.push('2. Copy these from SRC to TGT, at the same relative paths. Skip an entry that does not exist in SRC.');
-        L.push('   - settings.json');
-        L.push('   - settings.local.json');
-        L.push('   - CLAUDE.md, and every file inside SRC that it imports with an @path reference, and the files those import in turn');
-        L.push('   - the directories agents/, commands/, skills/, hooks/ and plugins/, complete (plugins/cache holds the installed plugin code: copy it too)');
-        L.push('   - keybindings.json');
-        L.push('   - the status line script: if statusLine.command in SRC' + sep + 'settings.json refers to a file inside SRC' +
-               (panel.own ? ' (it may be written as ~/.claude/...)' : '') +
-               ', copy that file, and in TGT' + sep + 'settings.json change that reference to the absolute path of the copy');
-        L.push('   Copy nothing else. Do not copy credentials (.credentials.json), transcripts (projects/), history (history.jsonl), sessions (sessions/, session-env/), todos (todos/), file history (file-history/), caches (cache/, paste-cache/, shell-snapshots/, statsig/) or logs.');
+        L.push('2. Merge this JSON into it:');
         L.push('');
-        L.push('3. Rewrite the plugin paths that point into SRC. In TGT' + sep + 'plugins' + sep + 'installed_plugins.json every "installPath" value, and in TGT' + sep + 'plugins' + sep + 'known_marketplaces.json every "installLocation" value, that equals ' + src + ' or starts with ' + src + sep + ': replace that leading ' + src + ' with ' + tgt + '. Leave every other value unchanged. Skip a file that does not exist.');
+        L.push('```json');
+        L.push(JSON.stringify(patch, null, 2));
+        L.push('```');
         L.push('');
-        L.push('4. Write TGT' + sep + '.claude.json as a new file that holds only these keys of ' + cj + ', each only if that file has it: "mcpServers", "hasCompletedOnboarding", "lastOnboardingVersion". Copy no other key.' +
-               (c.drop.length ? ' Leave these servers out of "mcpServers": ' + c.drop.map(q).join(', ') + '.' : '') +
-               ' If ' + cj + ' does not exist, write {}.');
+        L.push('   - "permissions"."deny": append each entry that the array does not hold yet, and keep the entries already there. Create "permissions" and "deny" if they are missing.');
+        L.push('   - "enabledPlugins", "skillOverrides": set each listed key inside the existing object, and keep its other keys. Create the object if it is missing.');
+        L.push('   - Any other key above: set it at the top level, and replace the value that is there.');
+        L.push('   Leave every other key in the file as it is. Do not change any other file, settings.local.json included.');
         L.push('');
-        if (hasPatch) {
-            L.push('5. Merge this JSON into TGT' + sep + 'settings.json. If step 2 copied no settings.json, start from {}.');
-            L.push('');
-            L.push('```json');
-            L.push(JSON.stringify(c.patch, null, 2));
-            L.push('```');
-            L.push('');
-            L.push('   - "permissions"."deny": append each entry that the array does not hold yet, and keep the entries already there. Create "permissions" and "deny" if they are missing.');
-            L.push('   - "enabledPlugins", "skillOverrides": set each listed key inside the existing object, and keep its other keys. Create the object if it is missing.');
-            L.push('   - Any other key above: set it at the top level, and replace the value that is there.');
-            L.push('   Keep everything else in settings.json as it is. Do not change settings.local.json.');
-        } else {
-            L.push('5. Leave TGT' + sep + 'settings.json as copied. There are no settings to merge.');
-        }
+        L.push('3. Before you write, show me each key you are about to change with its old and new value, and ask me. Write the file only after I say yes.');
         L.push('');
-        L.push('6. Check that every JSON file you wrote or changed parses as JSON.');
+        L.push('4. Check that the file you wrote parses as JSON.');
         L.push('');
-        L.push('7. Report what you did: what you copied, which paths you rewrote in step 3, which keys TGT' + sep + '.claude.json holds, and the final TGT' + sep + 'settings.json. Then tell me to:');
-        L.push('   - run `ccwrap ' + name + ' auth login` once to sign in on the new profile, because it has no credentials (or run `ccwrap ' + name + '` and type /login);');
-        L.push('   - run `ccwrap -x ' + name + '` to record a session on the new profile and check that the context is smaller.');
+        L.push('5. Tell me to quit and start Claude again, and to run /context to see the smaller context. Tell me that I can bring an item back by deleting its entry from ' + file + '.');
         return L.join('\n');
     }
 
@@ -807,32 +771,25 @@ JS = r"""
         var pane = $('pane'), top = pane.scrollTop;
         pane.innerHTML = '';
         var box = el('div', 'panel'), r = panelRequest(), atoms = r.info.atoms;
-        box.appendChild(el('h2', '', 'Make a profile without what you do not need'));
-        box.appendChild(el('p', 'note', 'Tick what the new profile should not have. Tokens are those of request #' + r.info.index +
+        box.appendChild(el('h2', '', 'Switch off what you do not need'));
+        box.appendChild(el('p', 'note', 'Tick what you do not need. Tokens are those of request #' + r.info.index +
             (r === root() ? '' : ' (the newest request with switchable items)') + '. Pick another request above to see its numbers.'));
-        panel.notes.forEach(function (t) { box.appendChild(el('p', 'note warn', t)); });
         box.appendChild(el('p', (atoms[panel.tool_search] ? 'note warn' : 'note'),
             'Limit: denying a tool removes it from the context, but when tool search is active, the schema of a deferred tool can still be in the request. ' +
-            (atoms[panel.tool_search] ? 'This request uses tool search, so a saving on a tool may not show in the next recording.' : 'Record the new profile to see the real saving.')));
+            (atoms[panel.tool_search] ? 'This request uses tool search, so a saving on a tool may not show in the next recording.' : 'Run ccwrap again to see the real saving.')));
 
         var total = el('div', 'total');
         var s = savedTokens(atoms);
         total.innerHTML = 'saves about <b>' + n(s) + '</b> of ' + n(r.info.prompt_in) + ' prompt tokens (' + pct(s, r.info.prompt_in) + ')';
         box.appendChild(total);
 
-        var nameBox = el('div', 'name');
-        nameBox.appendChild(el('span', '', 'profile name'));
-        var input = el('input'); input.type = 'text'; input.value = pick.name; input.placeholder = 'lean';
-        nameBox.appendChild(input);
+        var actions = el('div', 'actions');
         var copy = el('button', '', 'Copy the prompt');
-        nameBox.appendChild(copy);
-        var problem = el('span', 'warn');
-        nameBox.appendChild(problem);
-        box.appendChild(nameBox);
+        actions.appendChild(copy);
+        box.appendChild(actions);
 
         var sections = [['builtin', 'Built-in tools'], ['mcp', 'MCP servers'], ['connectors', 'claude.ai connectors'],
-                        ['plugins', 'Plugins'], ['skills', 'Skills'], ['agents', 'Subagent types'],
-                        ['fixed', 'Not switchable from here']];
+                        ['plugins', 'Plugins'], ['skills', 'Skills'], ['agents', 'Subagent types']];
         var depth = function (it) { var d = 0; for (var p = it.parent; p; p = byId[p] ? byId[p].parent : null) d++; return d; };
         sections.forEach(function (sec) {
             var list = items.filter(function (it) { return it.section === sec[0]; });
@@ -844,7 +801,6 @@ JS = r"""
                 var cb = el('input'); cb.type = 'checkbox';
                 cb.checked = isOn(it);
                 cb.disabled = !it.change || coveredByParent(it);
-                if (!it.change && it.section === 'fixed') cb.style.visibility = 'hidden';
                 cb.onchange = function () {
                     if (cb.checked) pick.ticks[it.id] = true; else delete pick.ticks[it.id];
                     untickBelow(it.id);
@@ -862,23 +818,20 @@ JS = r"""
         box.appendChild(el('h3', '', 'The prompt'));
         var out = el('div');
         box.appendChild(out);
-        function renderPrompt() {
-            var bad = nameProblem(pick.name);
-            problem.textContent = pick.name ? bad : '';
-            out.innerHTML = '';
-            copy.disabled = !!bad;
-            if (bad) { out.appendChild(el('p', 'note', bad)); return; }
-            var text = buildPrompt(pick.name);
+        var patch = changes();
+        copy.disabled = !Object.keys(patch).length;
+        if (copy.disabled) {
+            out.appendChild(el('p', 'note', 'Tick at least one item.'));
+        } else {
+            var text = buildPrompt(patch);
             copy.onclick = function () {
                 var done = function () { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy the prompt'; }, 1500); };
                 var fail = function () { copy.textContent = 'Copy failed: select the prompt below'; };
                 if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, fail); else fail();
             };
-            out.appendChild(el('p', 'note', 'Paste it into Claude Code, started as usual. Claude creates ' + panel.profiles + panel.sep + pick.name + '.'));
+            out.appendChild(el('p', 'note', 'Paste it into Claude Code. Claude changes ' + panel.settings + ' and asks before it writes.'));
             out.appendChild(el('pre', '', text));
         }
-        input.oninput = function () { pick.name = input.value.trim(); savePick(); renderPrompt(); };
-        renderPrompt();
         pane.appendChild(box);
         pane.scrollTop = top;
     }
@@ -910,7 +863,7 @@ JS = r"""
 
     $('sort').onclick = function () { state.sortBySize = !state.sortBySize; state.paneSort = null; $('sort').className = state.sortBySize ? 'on' : ''; renderTree(); renderPane(); persist(); };
     $('expand').onclick = function () { var all = function (it) { state.open[it.path] = true; it.children.forEach(all); }; all(root()); renderTree(); persist(); };
-    $('make').onclick = function () { state.mode = state.mode === 'profile' ? 'node' : 'profile'; savePick(); renderPane(); };
+    $('make').onclick = function () { state.mode = state.mode === 'panel' ? 'node' : 'panel'; savePick(); renderPane(); };
     $('collapse').onclick = function () { state.open = {}; renderTree(); persist(); };
     document.addEventListener('keydown', function (ev) {
         if (ev.target.tagName === 'INPUT') return;
@@ -954,7 +907,7 @@ rendered {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>
       <button id="sort">sort by size</button>
       <button id="expand">expand all</button>
       <button id="collapse">collapse</button>
-      <button id="make">make a profile</button>
+      <button id="make">switch off</button>
     </div>
     <div id="rows"></div>
   </div>
@@ -985,7 +938,7 @@ def render_run(run_dir: Path) -> str:
     for request in profile["requests"]:
         seen.update(dict.fromkeys(request["info"]["atoms"]))
     meta = load_meta(run_dir)
-    profile["panel"] = switches.panel(list(seen), switches.read_config(meta))
+    profile["panel"] = switches.panel(list(seen), switches.read_config())
     return render_page(run_dir.resolve(), exchanges, profile, meta)
 
 
