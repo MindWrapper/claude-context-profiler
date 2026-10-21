@@ -1,12 +1,23 @@
 # ccwrap
 
 See what fills Claude Code's context before you type a word, and switch off what you don't use.
+Everything runs on your machine, and nothing is sent anywhere new.
 
 ccwrap starts one Claude Code session with a recorder in front of it. A page opens in your
 browser and shows every part of each request to the model: system prompt, tools, MCP servers,
 connectors, plugins, skills and subagents, each with its estimated tokens. Tick what you don't
 need and the page gives you a prompt. Paste it into Claude, and Claude writes the changes into
 your settings. After that you don't need ccwrap; your normal `claude` starts lean.
+
+## Your data stays on your machine
+
+- **Nothing is sent anywhere new.** ccwrap adds no server, no account and no telemetry. Claude's
+  requests go to the same API they always go to; ccwrap only keeps a copy on your disk.
+- **Everything runs locally.** The recorder and the page listen on `127.0.0.1` only. The page is
+  a single local file that loads nothing from the internet.
+- **Credentials are never written.** Auth headers are redacted before anything touches the disk.
+- **You own the recordings.** They hold your prompts, the answers and the files Claude read, so
+  treat them like your transcripts. They live in `~/.ccwrap/recordings/`; delete them any time.
 
 ## Quick start
 
@@ -87,13 +98,6 @@ session. The other entries may need a new session.
 
 So "off by default, on when I need it" is cheap. Switch off the Artifact tool, and when you want
 to publish a page, delete `"Artifact"` from `permissions.deny` and ask for it.
-
-## Privacy
-
-A recording holds your prompts, the answers and the contents of files that Claude read. Treat it
-like your transcripts. Auth headers are redacted before anything is written. Nothing leaves your
-machine except the normal API traffic: the page is served on `127.0.0.1`. Recordings are kept
-under `~/.ccwrap/recordings/`; delete them any time.
 
 ## Limits
 
