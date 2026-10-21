@@ -1,6 +1,6 @@
 """The launcher: runs claude and records the session.
 
-    ccwrap [claude args...]
+    claude-context-profiler [claude args...]
 
 See AGENTS.md, sections "Command line", "Layout on disk" and "Parts".
 """
@@ -32,18 +32,18 @@ class SetupError(Exception):
 
 
 def say(message: str) -> None:
-    print(f"ccwrap: {message}", file=sys.stderr, flush=True)
+    print(f"claude-context-profiler: {message}", file=sys.stderr, flush=True)
 
 
-def ccwrap_home() -> Path:
-    return Path(os.environ.get("CCWRAP_HOME") or "~/.ccwrap").expanduser().absolute()
+def home_dir() -> Path:
+    return Path(os.environ.get("CLAUDE_CONTEXT_PROFILER_HOME") or "~/.claude-context-profiler").expanduser().absolute()
 
 
 # --- children ------------------------------------------------------------
 
 
 def start_child(module: str, args: list[str], log: Path) -> subprocess.Popen:
-    """Start a ccwrap module in the background, out of reach of the terminal's Ctrl-C."""
+    """Start a claude-context-profiler module in the background, out of reach of the terminal's Ctrl-C."""
     if WINDOWS:
         detach = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
     else:
@@ -167,16 +167,16 @@ class Recording:
                 "upstream": upstream,
                 "started": datetime.now().astimezone().isoformat(timespec="seconds"),
             }
-            (self.run_dir / "ccwrap.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+            (self.run_dir / "run.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
 
             run = str(self.run_dir)
             proxy_log = self.run_dir / "proxy.log"
-            self.proxy = start_child("ccwrap.proxy", [run, "--port", "0", "--upstream", upstream], proxy_log)
+            self.proxy = start_child("claude_context_profiler.proxy", [run, "--port", "0", "--upstream", upstream], proxy_log)
             port = wait_for_port(self.proxy, proxy_log, r"proxy: listening on http://127\.0\.0\.1:(\d+)", "proxy")
 
             viewer_log = self.run_dir / "viewer.log"
             viewer_args = [run, "--port", "0"]
-            if os.environ.get("CCWRAP_OPEN", "1") != "0":
+            if os.environ.get("CLAUDE_CONTEXT_PROFILER_OPEN", "1") != "0":
                 viewer_args.append("--open")
             say(f"recording to {self.run_dir}")
             self.start_viewer(viewer_args, viewer_log)
@@ -188,7 +188,7 @@ class Recording:
         """Best effort: without the viewer the recording goes on, and the page
         is built when the session ends."""
         try:
-            self.viewer = start_child("ccwrap.serve", args, log)
+            self.viewer = start_child("claude_context_profiler.serve", args, log)
             page_port = wait_for_port(self.viewer, log, r"viewer: http://127\.0\.0\.1:(\d+)/", "viewer")
         except (OSError, SetupError) as error:
             stop_child(self.viewer, 5)
@@ -234,7 +234,7 @@ def record_session(command: list[str], env: dict[str, str]) -> int:
     upstream = os.environ.get("ANTHROPIC_BASE_URL") or DEFAULT_UPSTREAM
     recording = Recording()
     try:
-        env["ANTHROPIC_BASE_URL"] = recording.start(ccwrap_home(), upstream)
+        env["ANTHROPIC_BASE_URL"] = recording.start(home_dir(), upstream)
     except SetupError as error:
         recording.stop()
         recording.discard()

@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-from ccwrap import profiler, reader  # noqa: E402
+from claude_context_profiler import profiler, reader  # noqa: E402
 
 
 def request(messages, system=None, tools=None, usage=None, index=1):

@@ -10,7 +10,7 @@ to move bytes and drop a copy on disk. Reading the copies is the reader's job.
 
 Credentials never reach the disk: the recording redacts the auth headers.
 
-    python -m ccwrap.proxy RUN [--port N] [--upstream URL] [--timeout S]
+    python -m claude_context_profiler.proxy RUN [--port N] [--upstream URL] [--timeout S]
 """
 
 from __future__ import annotations
@@ -94,7 +94,7 @@ def decode_body(raw: bytes, content_type: str) -> tuple[str, object]:
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "ccwrap-proxy"
+    server_version = "claude-context-profiler-proxy"
     sys_version = ""
     # A streamed answer arrives as many small frames. Nagle would hold each one
     # back waiting for company, and the session would feel slower than it is.

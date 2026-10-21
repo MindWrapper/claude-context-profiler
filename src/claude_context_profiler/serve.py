@@ -17,7 +17,7 @@ Routes:
     /, /context_profiler.html   what one call is made of
     /status                     {"count": N}, the number of recorded calls
 
-    python -m ccwrap.serve RUN [--port N] [--open]
+    python -m claude_context_profiler.serve RUN [--port N] [--open]
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ LIVE_JS = r"""
 """
 
 WAITING_HTML = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>ccwrap __RUN__</title>
+<html lang="en"><head><meta charset="utf-8"><title>claude-context-profiler __RUN__</title>
 <style>
 :root { color-scheme: light dark; }
 body { margin:0; padding:4rem 1.5rem; font:15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
@@ -129,7 +129,7 @@ class Pages:
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ccwrap-viewer"
+    server_version = "claude-context-profiler-viewer"
     sys_version = ""
 
     def log_message(self, fmt: str, *args) -> None:  # noqa: A003 - base class name

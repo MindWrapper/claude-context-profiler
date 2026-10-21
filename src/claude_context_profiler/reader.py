@@ -31,8 +31,8 @@ def load_run(run_dir: Path) -> list[dict]:
 
 
 def load_meta(run_dir: Path) -> dict:
-    """ccwrap.json, which the launcher writes next to the calls. Empty if absent."""
-    path = run_dir / "ccwrap.json"
+    """run.json, which the launcher writes next to the calls. Empty if absent."""
+    path = run_dir / "run.json"
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "ccwrap"
+name = "claude-context-profiler"
 version = "0.1.0"
 description = "See exactly what fills Claude Code's context, recorded and shown on your machine"
 license = "MIT"
@@ -14,7 +14,7 @@ authors = [{ name = "Yan Drugalya" }]
 dependencies = []
 
 [project.scripts]
-ccwrap = "ccwrap.cli:main"
+claude-context-profiler = "claude_context_profiler.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/ccwrap"]
+packages = ["src/claude_context_profiler"]

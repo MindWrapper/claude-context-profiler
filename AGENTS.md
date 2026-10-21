@@ -1,12 +1,13 @@
-# ccwrap
+# claude-context-profiler
 
-`ccwrap` is a context profiler for Claude Code. It records one session and shows what every request
-to the model is made of: each part, its estimated tokens and its full text. The context profiler
-page opens in the browser and follows the session live.
+`claude-context-profiler` is a context profiler for Claude Code. It records one session and shows
+what every request to the model is made of: each part, its estimated tokens and its full text. The
+profiler page opens in the browser and follows the session live.
 
-ccwrap only shows. It changes nothing in the user's config and does not suggest what to switch off;
-what to do about the context is up to the user. The page lets the user tick tools, skills, subagent
-types and MCP servers and copy their kinds and names, one `kind: name` per line, and that is all.
+The profiler only shows. It changes nothing in the user's config and does not suggest what to
+switch off; what to do about the context is up to the user. The page lets the user tick tools,
+skills, subagent types and MCP servers and copy their kinds and names, one `kind: name` per line,
+and that is all.
 The README has a short, static guide to the usual settings.
 
 `README.md` is the user-facing spec. Read `docs/common-guidelines-code.md` before you write code. It
@@ -17,33 +18,34 @@ This is a bare first version. It covers the main case only; the owner grows it s
 ## Command line
 
 ```
-ccwrap [claude args...]   claude, recorded, with the profiler page live in the browser
+claude-context-profiler [claude args...]   claude, recorded, with the profiler page live in the browser
 ```
 
-- Every argument goes to `claude` unchanged. ccwrap has no options of its own.
-- ccwrap reads its settings from environment variables, so it never takes a flag that belongs to
-  `claude`: `CCWRAP_HOME` (default `~/.ccwrap`, on Windows too) and `CCWRAP_OPEN=0` (do not open the
-  browser).
+- Every argument goes to `claude` unchanged. The command has no options of its own.
+- It reads its settings from environment variables, so it never takes a flag that belongs to
+  `claude`: `CLAUDE_CONTEXT_PROFILER_HOME` (default `~/.claude-context-profiler`, on Windows too)
+  and `CLAUDE_CONTEXT_PROFILER_OPEN=0` (do not open the browser).
 
 ## Layout on disk
 
 ```
-$CCWRAP_HOME/recordings/PROJECT/STAMP/   one recording
+$CLAUDE_CONTEXT_PROFILER_HOME/recordings/PROJECT/STAMP/   one recording
     0001.json, 0002.json ...             one API call each, written by the proxy
-    ccwrap.json                          written by the launcher, see below
+    run.json                          written by the launcher, see below
     proxy.log, viewer.log                the output of the two child processes
     context_profiler.html                written when the session ends
 ```
 
-- PROJECT is the basename of the directory that ccwrap started in. STAMP is `YYYYMMDD-HHMMSS`.
+- PROJECT is the basename of the directory that the command started in. STAMP is
+  `YYYYMMDD-HHMMSS`.
 - The launcher chooses the run directory and gives it to the proxy and the viewer.
-- `ccwrap.json` holds `{"project": absolute path, "upstream": URL, "started": ISO 8601}`. The
+- `run.json` holds `{"project": absolute path, "upstream": URL, "started": ISO 8601}`. The
   launcher writes it before it starts the proxy.
 
 ## Parts
 
-The package is in `src/ccwrap/`. It uses the Python standard library only and needs Python 3.10 or
-later. It runs on macOS, Linux and Windows.
+The package is in `src/claude_context_profiler/`. It uses the Python standard library only and needs
+Python 3.10 or later. It runs on macOS, Linux and Windows.
 
 - **launcher** (`cli.py`): finds `claude` with `shutil.which`, which also finds `claude.cmd` on
   Windows, starts the proxy and the viewer as child processes, sets `ANTHROPIC_BASE_URL`, runs
@@ -79,10 +81,10 @@ later. It runs on macOS, Linux and Windows.
 
 A broken recorder must never cost the user a session. If the proxy cannot start (no free port, a
 directory that cannot be written, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX` or
-`CLAUDE_CODE_USE_FOUNDRY` set, which bypass any base URL), ccwrap prints one line that says why,
-removes the run directory, and runs `claude` without recording. If only the viewer cannot start,
+`CLAUDE_CODE_USE_FOUNDRY` set, which bypass any base URL), the launcher prints one line that says
+why, removes the run directory, and runs `claude` without recording. If only the viewer cannot start,
 the recording goes on without the live page, and the launcher builds the page when `claude` exits.
-Errors that ccwrap prints are one readable line, not a traceback.
+Errors that the profiler prints are one readable line, not a traceback.
 
 ## Tests
 
