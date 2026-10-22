@@ -27,3 +27,19 @@ This project adds:
   fallback for pages opened from disk.
 - **Colors are custom properties** on `:root` (`--bg`, `--fg`, `--muted`, …), redefined under
   `prefers-color-scheme: dark`. A new color gets a property in both places.
+
+## How the tree is built
+
+`profiler.py` builds a tree of each request with estimated tokens per node. The listings Claude Code
+puts into the prompt (skills, subagent types, deferred tools, MCP server instructions) are split into
+one node per item by `LISTINGS`; each tool and listed item carries a `pick`, which the page shows as
+a checkbox. The module is named `profiler.py` because `profile.py` would shadow the standard
+library's `profile` module.
+
+## Check a change here
+
+Record a session (see `.claude/rules/recording.md`), then serve it with
+`python3 -m claude_context_profiler.serve RUN_DIR --port 8791`, open it in a browser, and check the
+console for errors. After a JavaScript edit, extract the page's last `<script>` and run
+`node --check` on it. When the page's look changes, retake the README screenshot with the
+`/update-screenshot` skill (`.claude/skills/update-screenshot/SKILL.md`).
