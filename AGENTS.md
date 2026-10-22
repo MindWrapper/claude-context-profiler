@@ -18,9 +18,10 @@ This is a bare first version. It covers the main case only; the owner grows it s
 ## Command line
 
 ```
-claude-context-profiler [claude args...]   claude, recorded, with the profiler page live in the browser
+ccprof [claude args...]   claude, recorded, with the profiler page live in the browser
 ```
 
+- `ccprof` and `claude-context-profiler` are the same command; the README uses `ccprof`.
 - Every argument goes to `claude` unchanged. The command has no options of its own.
 - It reads its settings from environment variables, so it never takes a flag that belongs to
   `claude`: `CLAUDE_CONTEXT_PROFILER_HOME` (default `~/.claude-context-profiler`, on Windows too)

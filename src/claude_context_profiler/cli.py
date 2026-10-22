@@ -32,7 +32,7 @@ class SetupError(Exception):
 
 
 def say(message: str) -> None:
-    print(f"claude-context-profiler: {message}", file=sys.stderr, flush=True)
+    print(f"ccprof: {message}", file=sys.stderr, flush=True)
 
 
 def home_dir() -> Path:

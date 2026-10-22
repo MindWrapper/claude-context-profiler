@@ -15,6 +15,7 @@ dependencies = []
 
 [project.scripts]
 claude-context-profiler = "claude_context_profiler.cli:main"
+ccprof = "claude_context_profiler.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/claude_context_profiler"]

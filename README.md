@@ -1,7 +1,6 @@
 # claude-context-profiler
 
-See exactly what fills Claude Code's context: every tool, skill, subagent, MCP server and message,
-with its tokens and full text. Everything runs on your machine, and nothing is sent anywhere new.
+Claude Context Profiler is a local tool designed to help you inspect and manage the context payload sent by Claude Code.  So you can optimize your workflow, save money and keep your model smarter.
 
 ![The context profiler page](docs/screenshot.png)
 
@@ -19,18 +18,20 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
    type `claude`. It starts Claude Code for you, with recording on:
 
    ```bash
-   claude-context-profiler
+   ccprof
    ```
+
+   `ccprof` is the short name; `claude-context-profiler` does the same.
 
 At your first message, a page opens in your browser and follows the session live. Open a request's
 tree, click any part to read it, and sort by size to see what costs the most. Tick items and press
 **copy selected** to copy them as `kind: name` lines. When you quit Claude, the recording stops and
 the page is saved.
 
-- Options are forwarded to `claude`: `claude-context-profiler --continue` runs `claude --continue`
+- Options are forwarded to `claude`: `ccprof --continue` runs `claude --continue`
   with recording on.
 - To try it without installing, `uvx` downloads and runs it in one go:
-  `uvx --from git+ssh://git@github.com/MindWrapper/claude-context-profiler claude-context-profiler`.
+  `uvx --from git+ssh://git@github.com/MindWrapper/claude-context-profiler ccprof`.
 - To update: `uv tool upgrade claude-context-profiler`. To remove:
   `uv tool uninstall claude-context-profiler`.
 - `CLAUDE_CONTEXT_PROFILER_OPEN=0` keeps the browser closed. `CLAUDE_CONTEXT_PROFILER_HOME` moves
@@ -114,4 +115,4 @@ setting `enableArtifact: false`, which no other settings file can turn back on. 
 ## Development
 
 Run the tests with `python -m unittest discover -s tests`, or run from a checkout with
-`uv run claude-context-profiler`. See `AGENTS.md` for the design. MIT license.
+`uv run ccprof`. See `AGENTS.md` for the design. MIT license.
