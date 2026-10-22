@@ -7,22 +7,35 @@ with its tokens and full text. Everything runs on your machine, and nothing is s
 
 ## Quick start
 
-You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH. In any project, run:
+You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
-```bash
-uvx --from git+ssh://git@github.com/MindWrapper/claude-context-profiler claude-context-profiler
-```
+1. Install it once:
 
-Claude Code starts as usual. At your first message, a page opens in your browser and follows the
-session live. Open a request's tree, click any part to read it, and sort by size to see what costs
-the most. Tick items and press **copy selected** to copy them as `kind: name` lines.
+   ```bash
+   uv tool install git+ssh://git@github.com/MindWrapper/claude-context-profiler
+   ```
 
-- Anything after the command goes to `claude` unchanged, such as `--continue`.
-- To install it: `uv tool install git+ssh://git@github.com/MindWrapper/claude-context-profiler`.
-  The repo is private for now; once it is public, the command becomes
-  `uvx claude-context-profiler`.
+2. Go to the folder where you would normally start Claude Code, and type this where you would
+   type `claude`. It starts Claude Code for you, with recording on:
+
+   ```bash
+   claude-context-profiler
+   ```
+
+At your first message, a page opens in your browser and follows the session live. Open a request's
+tree, click any part to read it, and sort by size to see what costs the most. Tick items and press
+**copy selected** to copy them as `kind: name` lines. When you quit Claude, the recording stops and
+the page is saved.
+
+- Options are forwarded to `claude`: `claude-context-profiler --continue` runs `claude --continue`
+  with recording on.
+- To try it without installing, `uvx` downloads and runs it in one go:
+  `uvx --from git+ssh://git@github.com/MindWrapper/claude-context-profiler claude-context-profiler`.
+- To update: `uv tool upgrade claude-context-profiler`. To remove:
+  `uv tool uninstall claude-context-profiler`.
 - `CLAUDE_CONTEXT_PROFILER_OPEN=0` keeps the browser closed. `CLAUDE_CONTEXT_PROFILER_HOME` moves
   the recordings (default `~/.claude-context-profiler`).
+- The repo is private for now, so installing needs SSH access to it.
 
 ## Without uv
 
