@@ -24,6 +24,45 @@ the most. Tick items and press **copy selected** to copy them as `kind: name` li
 - `CLAUDE_CONTEXT_PROFILER_OPEN=0` keeps the browser closed. `CLAUDE_CONTEXT_PROFILER_HOME` moves
   the recordings (default `~/.claude-context-profiler`).
 
+## Without uv
+
+The profiler is plain Python with no dependencies, so a clone and Python 3.10 or later are enough:
+
+```bash
+git clone https://github.com/MindWrapper/claude-context-profiler.git
+```
+
+Then, in your project, run it with the clone's `src` on the Python path:
+
+```bash
+PYTHONPATH=/path/to/claude-context-profiler/src python3 -m claude_context_profiler
+```
+
+On Windows, in PowerShell: `$env:PYTHONPATH = "C:\path\to\claude-context-profiler\src"`, then
+`python -m claude_context_profiler`.
+
+### Running the proxy yourself
+
+The command above starts a proxy and the page, and points one `claude` at the proxy through
+`ANTHROPIC_BASE_URL`. You can do the same by hand, each step in its own terminal with
+`PYTHONPATH` set as above. Start the proxy first; it creates the recording folder:
+
+```bash
+python3 -m claude_context_profiler.proxy ~/context-profile --port 8787
+```
+
+```bash
+python3 -m claude_context_profiler.serve ~/context-profile --port 8788 --open
+```
+
+```bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
+```
+
+When you are done, quit `claude` and press Ctrl-C in the other two terminals. The page is written
+to `~/context-profile/context_profiler.html`. Use a new folder for each session; sessions that share
+a folder are mixed together.
+
 ## Your data stays local
 
 - The profiler adds no server, account or telemetry. Claude's requests go to the same API as always.
@@ -53,8 +92,9 @@ setting `enableArtifact: false`, which no other settings file can turn back on. 
 
 - Bedrock, Vertex and Foundry ignore the base URL that recording relies on. The profiler then runs
   Claude Code without recording, as it does whenever the recorder cannot start.
-- The Claude desktop app is not recorded. A terminal session on the same config is close; the app
-  adds a few tools of its own.
+- The Claude desktop app cannot be recorded: it sets `ANTHROPIC_BASE_URL` itself and does not let
+  a session override it. Record a terminal session on the same config instead; it is close, the app
+  only adds a few tools of its own.
 - Token counts per part are estimates. The total per request is the API's own number.
 - Windows is supported, but tested by hand.
 
