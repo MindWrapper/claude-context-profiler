@@ -30,3 +30,7 @@ steps are in [.claude/rules/recording.md](.claude/rules/recording.md#check-a-cha
 2. Keep one change per pull request. If it changes behavior, update `README.md` in the same pull
    request.
 3. Open the pull request against `main`. It is squash-merged once CI passes and it has been reviewed.
+4. Add a line under **Unreleased** in `CHANGELOG.md` for anything a user would notice.
+
+Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Everyone taking part
+follows the [code of conduct](CODE_OF_CONDUCT.md).

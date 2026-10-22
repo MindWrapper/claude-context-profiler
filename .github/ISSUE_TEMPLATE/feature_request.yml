@@ -1,0 +1,16 @@
+name: Feature request
+description: Something the profiler should show or do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What you are trying to find out
+      description: The question about your context that the profiler cannot answer yet.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you imagine it. The profiler only shows; it does not change your config.

@@ -55,6 +55,6 @@ launcher, proxy or page also needs the real-session check in its rules file.
 - The owner works on `main` and commits and pushes only when the owner asks. Contributors open a
   pull request from a branch; it is squash-merged once CI passes. See `CONTRIBUTING.md`.
 - One change per commit. The subject starts with an imperative verb ("Add …", "Rename …").
-- A change in behavior updates `README.md` in the same commit, and this file or a rules file when
-  the design changes.
+- A change in behavior updates `README.md` and the **Unreleased** section of `CHANGELOG.md` in the
+  same commit, and this file or a rules file when the design changes.
 - Add tests only when the owner asks.
