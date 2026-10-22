@@ -8,7 +8,7 @@ Claude Context Profiler is a local tool designed to help you inspect and manage 
 
 You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
-1. Install it once:
+1. Install the tool:
 
    ```bash
    uv tool install git+ssh://git@github.com/MindWrapper/claude-context-profiler
@@ -23,7 +23,7 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
    `ccprof` is the short name; `claude-context-profiler` does the same.
 
-At your first message, a page opens in your browser and follows the session live. Open a request's
+As Claude Code starts, a page opens in your browser and follows the session live. Open a request's
 tree, click any part to read it, and sort by size to see what costs the most. Tick items and press
 **copy selected** to copy them as `kind: name` lines. When you quit Claude, the recording stops and
 the page is saved.
@@ -81,7 +81,8 @@ a folder are mixed together.
 
 - The profiler adds no server, account or telemetry. Claude's requests go to the same API as always.
 - The recorder and the page listen on `127.0.0.1` only. The page loads nothing from the internet.
-- Auth headers are redacted before anything touches the disk.
+- Your API key and sign-in token are never saved; the recording blanks them out. Extra headers you
+  add with `ANTHROPIC_CUSTOM_HEADERS` are saved as they are.
 - Recordings hold your prompts and the files Claude read. They live in
   `~/.claude-context-profiler/recordings/`; delete them any time.
 
@@ -110,7 +111,6 @@ setting `enableArtifact: false`, which no other settings file can turn back on. 
   a session override it. Record a terminal session on the same config instead; it is close, the app
   only adds a few tools of its own.
 - Token counts per part are estimates. The total per request is the API's own number.
-- Windows is supported, but tested by hand.
 
 ## Development
 

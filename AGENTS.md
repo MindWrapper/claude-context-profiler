@@ -89,6 +89,8 @@ Errors that the profiler prints are one readable line, not a traceback.
 
 ## Tests
 
-`tests/` holds the unit tests of the reader, the profiler and the viewer. Run them with
-`python -m unittest discover -s tests`. Keep them green when you change those parts. This project
-adds no new tests and no CI for now: the owner tests on Windows by hand.
+`tests/` holds the unit tests of the reader, the profiler, the viewer and the proxy. Run them with
+`python -m unittest discover -s tests`. Keep them green when you change those parts.
+`test_proxy.py` runs the real proxy between a test client and a fake upstream, and checks the
+README's privacy promise: credentials go upstream but never reach the disk. Add tests only when the
+owner asks; there is no CI for now, and the owner tests on Windows by hand.
