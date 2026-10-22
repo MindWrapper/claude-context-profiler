@@ -20,7 +20,8 @@ steps are in [.claude/rules/recording.md](.claude/rules/recording.md#check-a-cha
 - **The proxy stays dumb.** It forwards bytes and keeps a copy; it parses and changes nothing.
 - **Everything stays local.** The page loads nothing from the internet, and credentials never reach
   the disk (`tests/test_proxy.py` checks this).
-- **The profiler only shows.** It never changes the user's Claude Code config.
+- **The profiler never changes the user's config itself.** It only builds a prompt the user can give
+  to Claude.
 - Language rules are in [.claude/rules/](.claude/rules/), and the design is in [AGENTS.md](AGENTS.md).
   Coding agents read both; Claude Code loads them on its own.
 

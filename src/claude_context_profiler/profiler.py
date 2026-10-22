@@ -19,7 +19,6 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime
 from pathlib import Path
 
 from .reader import (
@@ -28,9 +27,7 @@ from .reader import (
     build_exchanges,
     esc,
     is_messages_call,
-    load_meta,
     load_run,
-    render_totals,
     system_blocks,
 )
 
@@ -485,18 +482,15 @@ def build_profile(exchanges: list[dict]) -> dict:
 CSS = """
 :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e0e0e0;
         --card:#fafafa; --code:#f4f4f5; --accent:#7a3fd4; --bar:#c9b3f2; --answer:#0a7b34;
-        --sel:#efe7fb; --warn:#b3261e; }
+        --sel:#efe7fb; --warn:#b3261e; --shade:rgba(0,0,0,.35); }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#16161a; --fg:#e6e6e6; --muted:#9a9aa5; --line:#2c2c33; --card:#1d1d22;
-          --code:#232329; --accent:#b18cf0; --bar:#4b3a73; --answer:#4ac97e; --sel:#2a2438; --warn:#ff7b72; }
+          --code:#232329; --accent:#b18cf0; --bar:#4b3a73; --answer:#4ac97e; --sel:#2a2438; --warn:#ff7b72; --shade:rgba(0,0,0,.6); }
 }
 * { box-sizing: border-box; }
 html, body { height:100%; }
 body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direction:column;
        font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-header { padding:1rem 1.5rem .5rem; border-bottom:1px solid var(--line); }
-h1 { font-size:1.3rem; margin:0; }
-.sub { color:var(--muted); margin:.2rem 0 0; font-size:13px; }
 .picker { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; padding:.6rem 1.5rem; border-bottom:1px solid var(--line); }
 .picker .chain { color:var(--muted); font-size:12px; margin-left:.6rem; }
 .picker button { font:12px ui-monospace, monospace; padding:.2rem .5rem; }
@@ -509,6 +503,7 @@ button.on { background:var(--code); }
 .split { flex:1; display:grid; grid-template-columns:minmax(360px, 44%) 1fr; min-height:0; }
 .tree, .pane { overflow:auto; min-height:0; }
 .tree { border-right:1px solid var(--line); }
+.toolbar button { white-space:nowrap; }
 .toolbar { display:flex; gap:.5rem; align-items:center; padding:.5rem .8rem; border-bottom:1px solid var(--line);
            position:sticky; top:0; background:var(--bg); z-index:1; font-size:12px; color:var(--muted); }
 .row { display:grid; grid-template-columns:1fr 6rem 5rem 3.2rem; align-items:center; gap:.5rem;
@@ -544,7 +539,13 @@ th { color:var(--muted); font-weight:600; cursor:pointer; user-select:none; }
 th:hover, th.on { color:var(--fg); }
 td a { color:var(--accent); cursor:pointer; }
 .note { color:var(--muted); font-size:12px; margin:.5rem 0; }
-footer { padding:.5rem 1.5rem; border-top:1px solid var(--line); color:var(--muted); font-size:12px; }
+dialog { width:min(720px, 92vw); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem;
+         background:var(--bg); color:var(--fg); }
+dialog::backdrop { background:var(--shade); }
+dialog h2 { font-size:1rem; margin:0; }
+dialog pre { max-height:55vh; }
+dialog .actions { display:flex; gap:.5rem; justify-content:flex-end; margin-top:.8rem; }
+button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
 """
 
 JS = r"""
@@ -553,7 +554,7 @@ JS = r"""
     var requests = data.requests, content = data.content;
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { req: 0, path: 'request', sortBySize: false, raw: false, open: {}, paneSort: null, picked: {} };
+    var state = { req: 0, path: 'request', sortBySize: true, raw: false, open: {}, paneSort: null, picked: {}, dialog: false };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -629,7 +630,7 @@ JS = r"""
                 var tick = el('input', 'tick');
                 tick.type = 'checkbox';
                 tick.checked = !!state.picked[pickKey(item.pick)];
-                tick.title = 'select ' + item.pick.kind + ' ' + item.pick.name;
+                tick.title = 'select ' + item.pick.name;
                 tick.onclick = function (ev) { ev.stopPropagation(); };
                 tick.onchange = function () { togglePick(item.pick, tick.checked); };
                 lbl.appendChild(tick);
@@ -642,7 +643,6 @@ JS = r"""
             fill.style.width = (total ? Math.max(0.5, 100 * item.tok / total) : 0) + '%';
             bar.appendChild(fill); row.appendChild(bar);
             var num = el('div', 'num'); num.innerHTML = '<b>' + n(item.tok) + '</b>';
-            num.title = n(item.chars) + ' chars';
             row.appendChild(num);
             row.appendChild(el('div', 'num', pct(item.tok, total)));
             row.onclick = function () { select(state.req, item.path); };
@@ -695,16 +695,12 @@ JS = r"""
             fact(facts, 'cache read', n(info.cache_read));
             fact(facts, 'cache write', n(info.cache_write));
             fact(facts, 'output', n(info.output) + ' tokens');
-            fact(facts, 'chars', n(item.chars));
-            fact(facts, 'chars/token', info.ratio + ' (' + info.ratio_source + ')');
             fact(facts, 'cache segments', info.segments);
             fact(facts, 'took', n(info.duration_ms) + ' ms');
             if (info.stop_reason) fact(facts, 'stop', info.stop_reason);
             if (info.aborted) fact(facts, '', 'aborted', 'warn');
             if (info.status >= 400) fact(facts, 'HTTP', info.status, 'warn');
         } else {
-            fact(facts, 'kind', item.kind);
-            fact(facts, 'chars', n(item.chars));
             fact(facts, '≈ tokens', n(item.tok));
             fact(facts, inAnswer ? 'of output' : 'of prompt', pct(item.tok, total));
             if (item.hidden_tok) fact(facts, 'not visible', n(item.hidden_tok) + ' tokens');
@@ -716,7 +712,7 @@ JS = r"""
         if (item.children.length) {
             var t = el('table');
             var head = el('tr');
-            [['part', 'wire'], ['chars', 'size'], ['≈ tokens', 'size'], ['share', 'size']].forEach(function (col) {
+            [['part', 'wire'], ['≈ tokens', 'size'], ['share', 'size']].forEach(function (col) {
                 var sort = state.paneSort || { key: state.sortBySize ? 'size' : 'wire', desc: state.sortBySize };
                 var active = sort.key === col[1] && (col[1] !== 'size' || col[0] === '≈ tokens');
                 var th = el('th', active ? 'on' : '', col[0] + (active ? (sort.desc ? ' ▾' : ' ▴') : ''));
@@ -738,7 +734,6 @@ JS = r"""
                 var td = el('td'); var a = el('a', '', k.label);
                 a.onclick = function () { select(state.req, k.path); };
                 td.appendChild(a); tr.appendChild(td);
-                tr.appendChild(el('td', '', n(k.chars)));
                 tr.appendChild(el('td', '', n(k.tok)));
                 tr.appendChild(el('td', '', pct(k.tok, k.kind === 'answer' ? k.tok : (item.kind === 'answer' ? item.tok : total))));
                 t.appendChild(tr);
@@ -767,8 +762,48 @@ JS = r"""
     function renderPickBar() {
         var count = picked().length;
         $('copy').disabled = !count;
-        $('copy').textContent = count ? 'copy ' + count + ' selected' : 'copy selected';
+        $('copy').textContent = count ? 'Disable prompt (' + count + ')' : 'Disable prompt';
         $('clear').disabled = !count;
+    }
+    // The prompt that asks Claude to switch the selected items off. Tools and
+    // subagent types map to one exact deny entry each; for skills and MCP
+    // servers the right entry depends on where they come from, so the prompt
+    // gives Claude the rule and has it check with the user.
+    function disablePrompt() {
+        var deny = [], skills = [], servers = [];
+        picked().forEach(function (key) {
+            var cut = key.indexOf(': '), kind = key.slice(0, cut), name = key.slice(cut + 2);
+            if (kind === 'tool' || kind === 'MCP tool') deny.push(name);
+            else if (kind === 'subagent') deny.push('Agent(' + name + ')');
+            else if (kind === 'skill') skills.push(name);
+            else if (kind === 'MCP server') servers.push(name);
+        });
+        var count = picked().length;
+        var L = ['Switch off ' + (count === 1 ? 'this part' : 'these ' + count + ' parts') +
+                 ' of my Claude Code context by editing ~/.claude/settings.json.', ''];
+        if (deny.length) {
+            L.push('Add these entries to "permissions" > "deny", and keep the entries already there:');
+            deny.forEach(function (entry) { L.push('- ' + JSON.stringify(entry)); });
+            L.push('');
+        }
+        if (skills.length) {
+            L.push('Switch off these skills: ' + skills.join(', ') + '.');
+            L.push('For a skill of my own, set "skillOverrides": {"NAME": "off"}. A plugin\'s skill goes only with ' +
+                   'its whole plugin: tell me which plugin it belongs to, and ask me before you set ' +
+                   '"NAME@MARKETPLACE": false in "enabledPlugins". If you are not sure an entry switches a skill ' +
+                   'off, tell me instead of guessing.');
+            L.push('');
+        }
+        if (servers.length) {
+            L.push('Switch off these MCP servers: ' + servers.join(', ') + '.');
+            L.push('Add "mcp__SERVER" to "permissions" > "deny", with SERVER written exactly as it appears in the ' +
+                   'server\'s tool names (mcp__SERVER__TOOL).');
+            L.push('');
+        }
+        L.push('Before you write, show me the exact change and ask me. Leave everything else in the file as it is.');
+        L.push('Then tell me that the context is smaller from my next session on, and that I can bring an item ' +
+               'back by deleting its entry.');
+        return L.join('\n') + '\n';
     }
     function copyText(text, done, fail) {
         if (navigator.clipboard && window.isSecureContext) {
@@ -790,6 +825,17 @@ JS = r"""
         return ok;
     }
 
+    // The dialog shows the prompt before it is copied: Claude Code folds a pasted
+    // block into "[Pasted text]", so the page is the only place to read it.
+    function openPrompt() {
+        var count = picked().length;
+        $('prompt-title').textContent = 'Disable prompt (' + count + (count === 1 ? ' item)' : ' items)');
+        $('prompt-text').textContent = disablePrompt();
+        $('prompt-copy').textContent = 'Copy';
+        if (!$('prompt-dialog').open) $('prompt-dialog').showModal();
+        state.dialog = true; persist();
+    }
+
     function select(req, path) {
         state.req = req;
         state.path = resolve(path);
@@ -807,7 +853,7 @@ JS = r"""
         try {
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, atEnd: state.req === requests.length - 1, path: state.path,
-                sortBySize: state.sortBySize, open: state.open, picked: state.picked
+                sortBySize: state.sortBySize, open: state.open, picked: state.picked, dialog: state.dialog
             }));
         } catch (e) { /* no storage: the page still works, it just forgets */ }
     }
@@ -818,35 +864,39 @@ JS = r"""
     $('sort').onclick = function () { state.sortBySize = !state.sortBySize; state.paneSort = null; $('sort').className = state.sortBySize ? 'on' : ''; renderTree(); renderPane(); persist(); };
     $('expand').onclick = function () { var all = function (it) { state.open[it.path] = true; it.children.forEach(all); }; all(root()); renderTree(); persist(); };
     $('collapse').onclick = function () { state.open = {}; renderTree(); persist(); };
-    $('copy').onclick = function () {
-        var b = $('copy');
-        var back = function () { setTimeout(renderPickBar, 1500); };
-        copyText(picked().join('\n') + '\n',
-                 function () { b.textContent = 'copied'; back(); },
-                 function () { b.textContent = 'copy failed'; back(); });
+    $('copy').onclick = openPrompt;
+    $('prompt-copy').onclick = function () {
+        var b = $('prompt-copy');
+        copyText($('prompt-text').textContent,
+                 function () { b.textContent = 'Copied'; },
+                 function () { b.textContent = 'Copy failed: select the text'; });
     };
+    $('prompt-close').onclick = function () { $('prompt-dialog').close(); };
+    $('prompt-dialog').addEventListener('close', function () { state.dialog = false; persist(); });
     $('clear').onclick = function () { state.picked = {}; renderTree(); renderPickBar(); persist(); };
     document.addEventListener('keydown', function (ev) {
+        if ($('prompt-dialog').open) return;
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
     });
     var saved = restore();
     if (saved) {
-        state.sortBySize = !!saved.sortBySize;
-        $('sort').className = state.sortBySize ? 'on' : '';
+        if (saved.sortBySize !== undefined) state.sortBySize = !!saved.sortBySize;
         state.open = saved.open || {};
         state.picked = saved.picked || {};
         select(saved.atEnd ? requests.length - 1 : Math.min(saved.req || 0, requests.length - 1), saved.path || 'request');
+        // A live reload while the dialog is open brings it back.
+        if (saved.dialog && picked().length) openPrompt();
     } else {
         select(0, 'request');
     }
+    $('sort').className = state.sortBySize ? 'on' : '';
     renderPickBar();
 })();
 """
 
 
-def render_page(run_dir: Path, exchanges: list[dict], profile: dict, meta: dict) -> str:
-    started = meta.get("started", "?")
+def render_page(run_dir: Path, profile: dict) -> str:
     payload = json.dumps(profile, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -854,33 +904,26 @@ def render_page(run_dir: Path, exchanges: list[dict], profile: dict, meta: dict)
 <title>context profile {esc(run_dir.name)}</title>
 <style>{CSS}</style></head>
 <body>
-<header>
-<h1>What the prompt is made of</h1>
-<p class="sub">{esc(run_dir)} &middot; started {esc(started)} &middot;
-rendered {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>
-{render_totals(exchanges)}
-</header>
-<div class="picker" id="picker"></div>
+<div class="picker" id="picker" title="&larr; &rarr; switch request"></div>
 <div class="split">
   <div class="tree">
     <div class="toolbar">
-      <span>&larr; &rarr; switch request</span>
       <button id="sort">sort by size</button>
       <button id="expand">expand all</button>
       <button id="collapse">collapse</button>
-      <button id="copy" title="copy the kind and name of each selected item, one per line">copy selected</button>
+      <button id="copy" title="show a prompt that asks Claude to switch the selected items off">Disable prompt</button>
       <button id="clear">clear</button>
     </div>
     <div id="rows"></div>
   </div>
   <div class="pane" id="pane"></div>
 </div>
-<footer>Token counts per part are estimates: the request's characters divided by its real
-<code>input_tokens</code> gives a chars-per-token ratio, applied to every part, so the parts add up to
-the real total. The answer's visible parts use the same ratio; what the API's <code>output_tokens</code>
-counts beyond them is thinking the recording cannot see (Claude Code asks the API to omit the thinking
-text) and is put on the thinking node. Cache segments are numbered in the order the API hashes the
-prompt: tools, then system, then messages.</footer>
+<dialog id="prompt-dialog">
+  <h2 id="prompt-title"></h2>
+  <p class="note">Paste it into Claude: it shows the change to your settings and asks before it writes.</p>
+  <pre id="prompt-text"></pre>
+  <div class="actions"><button id="prompt-copy" class="primary">Copy</button><button id="prompt-close">Close</button></div>
+</dialog>
 <script id="data" type="application/json">{payload}</script>
 <script>{JS}</script>
 </body></html>
@@ -896,7 +939,7 @@ def render_run(run_dir: Path) -> str:
         raise ValueError(f"{len(records)} records in {run_dir}, none of them a {MESSAGES_PATH} call")
     exchanges = build_exchanges(calls)
     profile = build_profile(exchanges)
-    return render_page(run_dir.resolve(), exchanges, profile, load_meta(run_dir))
+    return render_page(run_dir.resolve(), profile)
 
 
 def build(run_dir: Path, out: Path | None = None) -> Path:

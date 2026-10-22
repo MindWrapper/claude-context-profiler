@@ -42,7 +42,7 @@ class LivePages(unittest.TestCase):
             run_dir = Path(tmp)
             write_call(run_dir, 1)
             profiler = serve.Pages(run_dir).live(1)
-            self.assertIn("What the prompt is made of", profiler)
+            self.assertIn('<div id="rows">', profiler)
             self.assertIn("var count = 1", profiler)
             self.assertIn(json.dumps(str(run_dir.resolve() / "context_profiler.html")), profiler)
 
@@ -67,7 +67,7 @@ class LivePages(unittest.TestCase):
             self.assertEqual(serve.Pages(run_dir).write_final(), 1)
             page = (run_dir / "context_profiler.html").read_text(encoding="utf-8")
             self.assertNotIn("fetch('/status'", page)
-            self.assertIn("What the prompt is made of", page)
+            self.assertIn('<div id="rows">', page)
 
 
 if __name__ == "__main__":

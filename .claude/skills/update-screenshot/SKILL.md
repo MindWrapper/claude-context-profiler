@@ -6,7 +6,8 @@ disable-model-invocation: true
 
 # Update the README screenshot
 
-The page's header prints the recording's path, so the demo runs in a neutral folder: `/tmp/demo`.
+The recording holds the session's working directory and environment, so the demo runs in a neutral,
+empty folder: `/tmp/demo`.
 
 1. Record a one-line demo session. It makes real API calls.
 
@@ -27,6 +28,6 @@ The page's header prints the recording's path, so the demo runs in a neutral fol
    ```
 
 3. Look at `docs/screenshot.png`. Done when it shows the tools tree with three ticked items,
-   **copy 3 selected**, the Artifact tool's text in the right pane, and nothing personal: no email,
+   **Disable prompt (3)**, the Artifact tool's text in the right pane, and nothing personal: no email,
    no home path, no user name.
 4. Delete `/tmp/demo`, and show the screenshot to the owner before committing it.

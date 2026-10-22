@@ -24,9 +24,10 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
    `ccprof` is the short name; `claude-context-profiler` does the same.
 
 As Claude Code starts, a page opens in your browser and follows the session live. Open a request's
-tree, click any part to read it, and sort by size to see what costs the most. Tick items and press
-**copy selected** to copy them as `kind: name` lines. When you quit Claude, the recording stops and
-the page is saved.
+tree, click any part to read it, and sort by size to see what costs the most. To switch something off,
+tick it and press **Disable prompt**. A dialog shows the prompt; press **Copy** and paste it into
+Claude, which shows you the change to `~/.claude/settings.json` and asks before it writes. When you
+quit Claude, the recording stops and the page is saved.
 
 - Options are forwarded to `claude`: `ccprof --continue` runs `claude --continue`
   with recording on.
@@ -88,7 +89,9 @@ a folder are mixed together.
 
 ## Switching things off
 
-The profiler changes nothing; that part is up to you. The usual entries in `~/.claude/settings.json`:
+The profiler never changes your config itself; the **Disable prompt** button hands that to
+Claude, with your approval. These are the entries it uses, if you prefer to edit
+`~/.claude/settings.json` by hand:
 
 | To switch off                     | Add                                                         |
 |-----------------------------------|-------------------------------------------------------------|

@@ -30,15 +30,6 @@ def load_run(run_dir: Path) -> list[dict]:
     return records
 
 
-def load_meta(run_dir: Path) -> dict:
-    """run.json, which the launcher writes next to the calls. Empty if absent."""
-    path = run_dir / "run.json"
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-
-
 def is_messages_call(record: dict) -> bool:
     return record.get("method") == "POST" and record.get("path", "").startswith(MESSAGES_PATH) and "request_json" in record
 
@@ -252,20 +243,3 @@ def build_exchanges(records: list[dict]) -> list[dict]:
 
 def esc(value) -> str:
     return html.escape(str(value), quote=False)
-
-
-def render_totals(exchanges: list[dict]) -> str:
-    fresh = sum(e["row"]["fresh"] for e in exchanges)
-    read = sum(e["row"]["cache_read"] for e in exchanges)
-    write = sum(e["row"]["cache_write"] for e in exchanges)
-    output = sum(e["row"]["output"] for e in exchanges)
-    served = read + write + fresh
-    rate = (read / served * 100) if served else 0
-    largest = max((e["row"]["prompt_in"] for e in exchanges), default=0)
-    chains = len({e["chain_key"] for e in exchanges})
-    return (
-        f"<p class='sub'>{len(exchanges)} API calls in {chains} conversation chains &middot; "
-        f"cache hit rate {rate:.1f}% &middot; largest prompt {largest:,} tokens &middot; "
-        f"fresh input {fresh:,} &middot; cache reads {read:,} &middot; cache writes {write:,} &middot; "
-        f"output {output:,}</p>"
-    )

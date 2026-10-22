@@ -4,10 +4,11 @@
 what every request to the model is made of: each part, its estimated tokens and its full text. The
 profiler page opens in the browser and follows the session live.
 
-The profiler only shows. It changes nothing in the user's config and does not suggest what to
-switch off; what to do about the context is up to the user. The page lets the user tick tools,
-skills, subagent types and MCP servers and copy their kinds and names, one `kind: name` per line,
-and that is all.
+The profiler never changes the user's config itself, and does not suggest what to switch off; that
+is the user's choice. The page lets the user tick tools, skills, subagent types and MCP servers and
+copy a prompt that asks Claude to switch them off in `~/.claude/settings.json`. Tools and subagent
+types become exact `permissions.deny` entries; for skills and MCP servers the prompt states the rule
+and has Claude check with the user. Claude shows the change and asks before it writes.
 
 `README.md` is the user-facing spec. This is a bare first version: it covers the main case only, and
 the owner grows it step by step. The package is `src/claude_context_profiler/`: standard library
