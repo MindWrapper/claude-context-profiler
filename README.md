@@ -40,7 +40,7 @@ the page is saved.
 
 ## Without uv
 
-The profiler is plain Python with no dependencies, so a clone and Python 3.10 or later are enough:
+The profiler is plain Python with no dependencies, so a clone and Python 3.9 or later are enough:
 
 ```bash
 git clone https://github.com/MindWrapper/claude-context-profiler.git

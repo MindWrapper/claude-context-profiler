@@ -11,3 +11,11 @@ venv/
 .coverage
 htmlcov/
 .DS_Store
+
+# Claude Code: personal files and session worktrees
+.claude/settings.local.json
+CLAUDE.local.md
+.claude/worktrees/
+
+# uv run creates it; the package has no dependencies to lock
+uv.lock
