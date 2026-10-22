@@ -1,5 +1,6 @@
 """Take docs/screenshot.png from a recording: the first request's tools, sorted by size, with the
-three largest ticked. Usage: python3 shot.py RUN_DIR OUT.png
+three largest ticked and the Artifact tool selected, so the right pane shows its text.
+Usage: python3 shot.py RUN_DIR OUT.png
 """
 
 from __future__ import annotations
@@ -29,12 +30,13 @@ def find_chrome() -> str:
     raise SystemExit("shot: no Chrome or Chromium found")
 
 
-def largest_tools(run_dir: Path, count: int = 3) -> list[str]:
+def tools_by_size(run_dir: Path) -> list[str]:
+    """The tool names of the first request that has tools, largest first."""
     for path in sorted(run_dir.glob("0*.json")):
         tools = (json.loads(path.read_text(encoding="utf-8")).get("request_json") or {}).get("tools") or []
         if tools:
             tools = sorted(tools, key=lambda tool: len(json.dumps(tool)), reverse=True)
-            return [tool.get("name", "") for tool in tools[:count]]
+            return [tool.get("name", "") for tool in tools]
     return []
 
 
@@ -42,11 +44,13 @@ def main() -> int:
     run_dir, out = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
     html = (run_dir / "context_profiler.html").read_text(encoding="utf-8")
     title = re.search(r"<title>(.*?)</title>", html).group(1)
+    tools = tools_by_size(run_dir)
+    shown = "Artifact" if "Artifact" in tools else tools[0]
     # The page restores its view from sessionStorage; seed it before the page script runs.
     state = {
-        "req": 0, "atEnd": False, "path": "tools", "sortBySize": True,
+        "req": 0, "atEnd": False, "path": f"tools/{shown}", "sortBySize": True,
         "open": {"request": True, "tools": True},
-        "picked": {f"tool: {name}": True for name in largest_tools(run_dir)},
+        "picked": {f"tool: {name}": True for name in tools[:3]},
     }
     seed = "<script>sessionStorage.setItem(%s, %s);</script>" % (
         json.dumps("profile:" + title), json.dumps(json.dumps(state)))
