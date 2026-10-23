@@ -159,6 +159,7 @@ class Recording:
 
     def __init__(self) -> None:
         self.run_dir: Path | None = None
+        self.page_url: str | None = None
         self.proxy: subprocess.Popen | None = None
         self.viewer: subprocess.Popen | None = None
 
@@ -199,7 +200,8 @@ class Recording:
             self.viewer = None
             say(f"{error}; the live page is off, the page is built when the session ends")
             return
-        say(f"live page at http://127.0.0.1:{page_port}/")
+        self.page_url = f"http://127.0.0.1:{page_port}/"
+        say(f"live page at {self.page_url}")
 
     def stop(self) -> None:
         # The proxy goes first, so that no call lands after the viewer writes
@@ -227,6 +229,22 @@ class Recording:
                 say(f"cannot build the page: {error}")
                 return
         say(f"page: {page}")
+
+
+def with_page_address(command: list[str], recording: Recording) -> list[str]:
+    """Pass claude a SessionStart hook that shows the live page's address on its start screen.
+
+    The terminal line that says it is gone once claude takes over the terminal. The settings file
+    sits in the run directory and holds only the hook, so the user's own settings stay as they are.
+    A user who passes --settings keeps it, and the address stays in the terminal line only.
+    """
+    if recording.page_url is None or recording.run_dir is None or "--settings" in command[1:]:
+        return command
+    python = f'"{sys.executable}"' if " " in sys.executable else sys.executable
+    hook = {"type": "command", "command": f"{python} -m claude_context_profiler.hook {recording.page_url}"}
+    path = recording.run_dir / "claude-settings.json"
+    path.write_text(json.dumps({"hooks": {"SessionStart": [{"hooks": [hook]}]}}, indent=2) + "\n", encoding="utf-8")
+    return [command[0], "--settings", str(path), *command[1:]]
 
 
 def run_unrecorded(command: list[str], env: dict[str, str], reason: str) -> int:
@@ -257,7 +275,7 @@ def record_session(command: list[str], env: dict[str, str]) -> int:
         raise
 
     try:
-        return run_claude(command, env)
+        return run_claude(with_page_address(command, recording), env)
     finally:
         recording.stop()
         recording.report()

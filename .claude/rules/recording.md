@@ -5,6 +5,7 @@ paths:
   - "src/claude_context_profiler/serve.py"
   - "src/claude_context_profiler/reader.py"
   - "src/claude_context_profiler/loopback.py"
+  - "src/claude_context_profiler/hook.py"
   - "tests/test_proxy.py"
   - "tests/test_launcher.py"
   - "tests/test_serve.py"
@@ -18,6 +19,7 @@ paths:
 $CLAUDE_CONTEXT_PROFILER_HOME/recordings/PROJECT/STAMP/   one recording
     0001.json, 0002.json ...   one API call each, written by the proxy
     run.json                   written by the launcher before it starts the proxy
+    claude-settings.json       the SessionStart hook that shows the page's address in claude
     proxy.log, viewer.log      the output of the two child processes
     context_profiler.html      written when the session ends
 ```
@@ -31,6 +33,9 @@ PROJECT is the basename of the directory the command started in; STAMP is `YYYYM
   - It stops the proxy first, so that no call lands after the viewer writes the final page. If the
     viewer died, it builds the page itself with `profiler.build()`.
   - The proxy's output goes to a log file, never to the terminal that `claude` owns.
+  - Once the viewer runs, `claude` gets `--settings claude-settings.json`: a SessionStart hook,
+    `hook.py`, returns the page's address as a `systemMessage`, which Claude Code shows on its start
+    screen and keeps out of the model's context. A user who passes `--settings` keeps theirs.
   - On Windows, the children start with `CREATE_NEW_PROCESS_GROUP` and stop with
     `CTRL_BREAK_EVENT`: a plain `terminate()` kills the viewer before it writes the final page.
 - **proxy** (`proxy.py`) forwards each request upstream byte for byte and writes a copy. It sits in

@@ -26,9 +26,10 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
    `ccprof` is the short name; `claude-context-profiler` does the same.
 
-As Claude Code starts, a page opens in your browser and follows the session live. Open a request's
-tree, click any part to read it, and sort by size to see what costs the most. To switch something off,
-tick it and press **Disable prompt**. A dialog shows the prompt; press **Copy** and paste it into
+As Claude Code starts, a page opens in your browser and follows the session live. Its address is
+also on Claude's start screen, in case the browser does not open. Open a request's tree, click any
+part to read it, and sort by size to see what costs the most. To switch something off, tick it and
+press **Disable prompt**. A dialog shows the prompt; press **Copy** and paste it into
 Claude, which shows you the change to `~/.claude/settings.json` and asks before it writes. When you
 quit Claude, the recording stops and the page is saved.
 

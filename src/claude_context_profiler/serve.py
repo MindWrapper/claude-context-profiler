@@ -166,7 +166,14 @@ def open_on_first_call(run_dir: Path, url: str, stop: threading.Event) -> None:
     at startup would take the focus from the terminal just as the session starts."""
     while not stop.is_set():
         if count_records(run_dir):
-            webbrowser.open(url)
+            # webbrowser reports a failure by returning False; say so in viewer.log.
+            try:
+                opened = webbrowser.open(url)
+            except Exception as error:  # noqa: BLE001 - one line in the log, not a dead thread
+                opened, why = False, f": {error}"
+            else:
+                why = ""
+            print(f"viewer: {'opened' if opened else 'could not open'} the browser at {url}{why}", flush=True)
             return
         stop.wait(0.5)
 

@@ -29,9 +29,10 @@ ccprof [claude args...]   claude, recorded, with the profiler page live in the b
 ```
 
 `ccprof` and `claude-context-profiler` are the same command. Every argument goes to `claude`
-unchanged; settings come from `CLAUDE_CONTEXT_PROFILER_HOME` (default `~/.claude-context-profiler`)
-and `CLAUDE_CONTEXT_PROFILER_OPEN=0` (do not open the browser), so the command never takes a flag
-that belongs to `claude`.
+unchanged, plus one `--settings` that shows the page's address on Claude's start screen. Settings
+come from `CLAUDE_CONTEXT_PROFILER_HOME` (default `~/.claude-context-profiler`) and
+`CLAUDE_CONTEXT_PROFILER_OPEN=0` (do not open the browser), so the command never takes a flag that
+belongs to `claude`.
 
 ## Where the details are
 

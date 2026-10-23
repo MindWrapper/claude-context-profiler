@@ -24,7 +24,16 @@ WINDOWS = os.name == "nt"
 
 # The fake claude: one request through the proxy, then a look at the live page.
 FAKE_CLAUDE = r'''
-import glob, json, os, re, sys, time, urllib.request
+import glob, json, os, re, subprocess, sys, time, urllib.request
+
+# Run the SessionStart hook from --settings the way claude does: through the shell, JSON on stdin.
+greeting = None
+if "--settings" in sys.argv:
+    settings = json.load(open(sys.argv[sys.argv.index("--settings") + 1], encoding="utf-8"))
+    for group in settings["hooks"]["SessionStart"]:
+        for hook in group["hooks"]:
+            out = subprocess.run(hook["command"], shell=True, input="{}", capture_output=True, text=True)
+            greeting = json.loads(out.stdout)["systemMessage"]
 
 base = os.environ["ANTHROPIC_BASE_URL"]
 body = {
@@ -37,7 +46,8 @@ request = urllib.request.Request(base + "/v1/messages", data=json.dumps(body).en
                                  headers={"content-type": "application/json", "x-api-key": "FAKE-API-KEY"})
 answer = json.loads(urllib.request.urlopen(request, timeout=30).read())
 
-result = {"answer": answer["content"][0]["text"], "status": None, "page_has_tree": False, "opened": None}
+result = {"answer": answer["content"][0]["text"], "status": None, "page_has_tree": False, "opened": None,
+          "greeting": greeting}
 deadline = time.monotonic() + 30
 home = os.environ["CLAUDE_CONTEXT_PROFILER_HOME"]
 while time.monotonic() < deadline:
@@ -153,6 +163,9 @@ class Launcher(unittest.TestCase):
         self.assertTrue(result["page_has_tree"], f"the live page did not render: {result}{report}")
         self.assertTrue((result["opened"] or "").startswith("http://127.0.0.1:"),
                         f"the browser was not opened: {result}{report}")
+        # Claude's start screen shows the address the launcher printed.
+        page_url = run.stderr.split("ccprof: live page at ")[1].split()[0]
+        self.assertEqual(result["greeting"], f"context profiler: {page_url}", report)
 
         # The key went upstream, but the recording blanked it, and the final page was written.
         self.assertEqual(FakeAPI.received[0]["x-api-key"], "FAKE-API-KEY")

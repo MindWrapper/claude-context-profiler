@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- Claude's start screen shows the address of the live page, so it can be found when the browser
+  does not open. The message is shown to you only and stays out of the recorded context.
 - The launcher waits up to 30s for the recorder to start, not 10s: a fresh machine scans Python on
   its first start. When a session is not recorded, it says so again after Claude exits.
 - The proxy and the page start without a reverse DNS lookup of 127.0.0.1, which hung for half a
