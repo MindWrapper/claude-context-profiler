@@ -17,6 +17,10 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.x"]
+        # A macOS minute counts as ten against the Actions allowance, so macOS runs one Python.
+        exclude:
+          - os: macos-latest
+            python: "3.9"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
