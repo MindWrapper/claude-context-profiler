@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- A timeline replaces the row of request buttons: one bar per request, its height the prompt's
+  tokens, so a long session stays one row. ‹ › and the arrow keys step through it.
 - Token-counting calls (`/v1/messages/count_tokens`, which `/context` makes) are no longer listed as
   requests, and requests are numbered among themselves.
 - The browser no longer opens by default: the page's address is on Claude's start screen.

@@ -492,10 +492,17 @@ CSS = """
 html, body { height:100%; }
 body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direction:column;
        font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-.picker { display:flex; gap:.5rem; align-items:center; flex-wrap:wrap; padding:.6rem 1.5rem; border-bottom:1px solid var(--line); }
-.picker .chain { color:var(--muted); font-size:12px; margin-left:.6rem; }
-.picker button { font:12px ui-monospace, monospace; padding:.2rem .5rem; }
-.picker button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+.picker { display:flex; gap:.6rem; align-items:center; padding:.5rem 9rem .5rem 1.5rem; border-bottom:1px solid var(--line); }
+.picker .step { font:16px/1 ui-monospace, monospace; padding:.1rem .55rem; }
+.tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; min-width:16rem; text-align:center; }
+.timeline { flex:1; min-width:0; height:28px; display:flex; align-items:flex-end; gap:2px; overflow-x:auto; }
+.timeline.dense { gap:0; }
+.timeline.dense .tl-bar { min-width:1px; border-radius:0; }
+.tl-bar { flex:1 1 0; min-width:2px; max-width:14px; background:var(--bar); border-radius:2px 2px 0 0; cursor:pointer; }
+.tl-bar:hover { background:var(--muted); }
+.tl-bar.on { background:var(--accent); }
+.tl-bar.err { background:var(--warn); }
+.tl-bar.gap { margin-left:7px; }
 button { font:inherit; padding:.3rem .7rem; border:1px solid var(--line); border-radius:6px;
          background:var(--card); color:var(--fg); cursor:pointer; }
 button:hover { background:var(--code); }
@@ -620,20 +627,39 @@ JS = r"""
         return o === undefined ? depth < 1 : o;
     }
 
+    // One bar per request, its height the prompt's tokens, so a long session stays one row and shows
+    // how the context grew. A gap starts a new conversation chain; a failed call is red.
+    function failed(info) { return info.status >= 400 || info.aborted; }
     function renderPicker() {
         var box = $('picker');
         box.innerHTML = '';
-        var chain = null;
+        var info = root().info;
+        var prev = el('button', 'step', '\u2039'), next = el('button', 'step', '\u203a');
+        prev.title = 'previous request (\u2190)'; next.title = 'next request (\u2192)';
+        prev.disabled = state.req === 0; next.disabled = state.req === requests.length - 1;
+        prev.onclick = function () { select(state.req - 1, state.path); };
+        next.onclick = function () { select(state.req + 1, state.path); };
+        box.appendChild(prev);
+        box.appendChild(el('span', 'tl-label', 'request ' + (state.req + 1) + ' of ' + requests.length + ' \u00b7 ' +
+            (failed(info) ? (info.status >= 400 ? 'HTTP ' + info.status : 'aborted') : n(info.prompt_in) + ' tokens')));
+        box.appendChild(next);
+        var strip = el('div', 'timeline' + (requests.length > 120 ? ' dense' : ''));
+        var top = Math.max.apply(null, requests.map(function (r) { return r.info.prompt_in; }).concat([1]));
         requests.forEach(function (r, i) {
-            if (r.info.chain !== chain) {
-                chain = r.info.chain;
-                box.appendChild(el('span', 'chain', 'chain ' + chain));
-            }
-            var b = el('button', i === state.req ? 'on' : '', '#' + r.info.index + ' ' + n(r.info.prompt_in));
-            b.title = r.info.model + ' · ' + n(r.info.prompt_in) + ' in · ' + n(r.info.output) + ' out';
-            b.onclick = function () { select(i, state.path); };
-            box.appendChild(b);
+            var bar = el('div', 'tl-bar' + (i === state.req ? ' on' : '') + (failed(r.info) ? ' err' : '') +
+                         (i && r.info.chain !== requests[i - 1].info.chain ? ' gap' : ''));
+            bar.style.height = Math.max(10, 100 * r.info.prompt_in / top) + '%';
+            bar.title = 'request ' + (i + 1) + ' \u00b7 ' + n(r.info.prompt_in) + ' tokens \u00b7 ' + r.info.model +
+                        ' \u00b7 chain ' + r.info.chain + (failed(r.info) ? ' \u00b7 failed' : '');
+            bar.onclick = function () { select(i, state.path); };
+            strip.appendChild(bar);
         });
+        box.appendChild(strip);
+        // In a narrow window the strip scrolls; keep the selected bar in view.
+        var on = strip.querySelector('.tl-bar.on');
+        if (on && strip.scrollWidth > strip.clientWidth) {
+            strip.scrollLeft = on.offsetLeft - strip.offsetLeft - strip.clientWidth / 2;
+        }
     }
 
     function renderTree() {

@@ -36,6 +36,14 @@ one node per item by `LISTINGS`; each tool and listed item carries a `pick`, whi
 a checkbox. The module is named `profiler.py` because `profile.py` would shadow the standard
 library's `profile` module.
 
+## The timeline
+
+The strip at the top has one bar per request, its height the prompt's tokens, so a session of any
+length stays one row and shows how the context grew. A gap starts a new conversation chain, a failed
+call is red, and the selected bar is scrolled into view. Requests are numbered among the requests:
+`reader.is_messages_call` takes only the exact `/v1/messages` path, so the `count_tokens` calls
+Claude Code makes (for `/context`, say) are not requests.
+
 ## The right pane
 
 A part with JSON behind it (a tool, a message or system block, the envelope) shows that JSON as a
