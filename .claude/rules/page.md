@@ -48,6 +48,11 @@ Claude Code makes (for `/context`, say) are not requests.
 
 ## The right pane
 
+A request shows its tokens in the categories `/context` uses (`categories` in `profiler.py`), so a
+user can line the two up; the tree already shows the request's own parts. Messages is what the other
+categories leave of the messages, as in `/context`. `/context` itself shows System tools less the
+skills and adds them to Messages; the page does not copy that.
+
 A part with JSON behind it (a tool, a message or system block, the envelope) shows that JSON as a
 readable tree, `jsonView`: every key in its order, dim keys, long strings as formatted text, and a
 token estimate per object and long string. It measures characters the way Python's `json.dumps`

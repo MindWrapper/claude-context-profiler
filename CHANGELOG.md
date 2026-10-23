@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- A request's pane shows its tokens in `/context`'s categories (System prompt, System tools, MCP
+  server instructions, Memory files, Skills, Messages); each row opens its part. The deferred tools
+  listing is called "deferred tools (names only)": only the names are sent.
 - MCP server instructions are split into one item per server again, so each can be read and ticked.
   Claude Code now puts a sentence before the servers, and a server's own text can have `##` headings.
 - A request's pane shows Claude's session ID and the recording's folder, each with a copy button.

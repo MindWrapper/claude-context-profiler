@@ -177,7 +177,7 @@ def split_sections(text: str) -> list[tuple[str, str]]:
 LISTINGS = [
     (re.compile(r"^The following skills are available.*:\s*$"), "skills", "skill", "bullets"),
     (re.compile(r"^Available agent types.*:\s*$"), "subagent types", "subagent", "bullets"),
-    (re.compile(r"^.*deferred tools are now available.*:\s*$", re.I), "deferred tools", "tool", "names"),
+    (re.compile(r"^.*deferred tools are now available.*:\s*$", re.I), "deferred tools (names only)", "tool", "names"),
     (re.compile(r"^The following tools just became available.*:\s*$"), "added tools", "tool", "names"),
     (re.compile(r"^# MCP Server Instructions\s*$"), "MCP servers", "MCP server", "headings"),
 ]
@@ -442,6 +442,49 @@ def estimate_answer(answer: dict, output_tokens: int, chars_per_token: float) ->
     answer["tok"] = output_tokens if output_tokens else visible
 
 
+# The categories /context shows, in its order, so the page and /context can be lined up.
+CATEGORIES = ["System prompt", "System tools", "MCP tools", "MCP server instructions", "Memory files", "Skills", "Messages"]
+LISTING_CATEGORIES = {"MCP servers": "MCP server instructions", "skills": "Skills"}
+MEMORY_RE = re.compile(r"^Contents of \S+ \(.*instructions", re.M)
+
+
+def categories(root: dict, store: Store) -> list[dict]:
+    """The prompt's tokens in /context's categories, each with the path of its first part.
+
+    Like /context, Messages is what the other categories leave of the messages: the conversation,
+    and the listings and reminders Claude Code puts into it."""
+    totals: dict[str, int] = {}
+    paths: dict[str, str] = {}
+
+    def add(category: str, tokens: int, path: str) -> None:
+        totals[category] = totals.get(category, 0) + tokens
+        paths.setdefault(category, path)
+
+    def walk(item: dict, category: str) -> None:
+        own = LISTING_CATEGORIES.get(item["label"]) if item["kind"] == "listing" else None
+        text = store.items.get(item.get("text") or "") if not item["children"] else None
+        if own is None and text and MEMORY_RE.search(text):
+            own = "Memory files"
+        if own:
+            add(own, item["tok"], item["path"])
+            return
+        # The part of a node its children do not cover, such as JSON around them, stays in its category.
+        add(category, item["tok"] - sum(child["tok"] for child in item["children"]), item["path"])
+        for child in item["children"]:
+            walk(child, category)
+
+    for part in root["children"]:
+        if part["kind"] == "answer":
+            continue
+        if part["label"] == "tools":
+            add("System tools", part["tok"] - sum(tool["tok"] for tool in part["children"]), part["path"])
+            for tool in part["children"]:
+                add("MCP tools" if tool["label"].startswith("mcp__") else "System tools", tool["tok"], part["path"])
+        else:
+            walk(part, "System prompt" if part["label"] == "system" else "Messages")
+    return [{"label": c, "tok": totals[c], "path": paths[c]} for c in CATEGORIES if totals.get(c, 0) > 0]
+
+
 def chars_per_token(exchanges: list[dict], position: int) -> tuple[float, str]:
     """The ratio of this request, or of the nearest request in its chain that
     has a token count, or the fallback."""
@@ -499,6 +542,7 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
         "aborted": bool(record.get("aborted")),
         "status": record.get("status"),
         "stop_reason": exchange["answer"].get("stop_reason"),
+        "categories": categories(root, store),
     }
     return root
 
@@ -778,6 +822,28 @@ JS = r"""
         return box;
     }
 
+    // The request in /context's categories, so the page and /context can be lined up; the tree on
+    // the left already shows the request's own parts.
+    var CATEGORY_NOTES = {
+        'System tools': '/context shows this less Skills, and adds the difference to Messages',
+        'Messages': 'the conversation, and the listings and reminders Claude Code puts into it'
+    };
+    function categoryTable(info) {
+        var t = el('table'), head = el('tr');
+        ['as /context counts it', '\u2248 tokens', 'share'].forEach(function (h) { head.appendChild(el('th', '', h)); });
+        t.appendChild(head);
+        info.categories.forEach(function (c) {
+            var tr = el('tr'), td = el('td'), a = el('a', '', c.label);
+            a.onclick = function () { select(state.req, c.path); };
+            if (CATEGORY_NOTES[c.label]) td.title = CATEGORY_NOTES[c.label];
+            td.appendChild(a); tr.appendChild(td);
+            tr.appendChild(el('td', '', n(c.tok)));
+            tr.appendChild(el('td', '', pct(c.tok, info.prompt_in)));
+            t.appendChild(tr);
+        });
+        return t;
+    }
+
     function renderPane() {
         var pane = $('pane');
         pane.innerHTML = '';
@@ -806,9 +872,10 @@ JS = r"""
             if (item.bp) fact(facts, '', 'breakpoint ends here', 'warn');
         }
         pane.appendChild(facts);
-        if (item.kind === 'request') pane.appendChild(ids(info));
-
-        if (item.children.length) {
+        if (item.kind === 'request') {
+            pane.appendChild(ids(info));
+            pane.appendChild(categoryTable(info));
+        } else if (item.children.length) {
             var t = el('table');
             var head = el('tr');
             [['part', 'wire'], ['≈ tokens', 'size'], ['share', 'size']].forEach(function (col) {
