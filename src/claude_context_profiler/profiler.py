@@ -196,6 +196,28 @@ def server_key(heading: str) -> str:
     return re.sub(r"[^\w-]", "_", heading)
 
 
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, (dict, list)):
+        for item in value.values() if isinstance(value, dict) else value:
+            yield from strings(item)
+
+
+def server_names(exchanges: list[dict]) -> dict[str, str]:
+    """Each MCP server's name by its key, from the "## NAME" headings of the server instructions, which
+    name it as deniedMcpServers does. A server that sends no instructions is known by its key only."""
+    names = {}
+    for exchange in exchanges:
+        keys = mcp_servers(exchange["body"])
+        for text in strings(exchange["body"]):
+            if "# MCP Server Instructions" in text:
+                for heading in re.findall(r"^## (.+)$", text, re.M):
+                    if server_key(heading.strip()) in keys:
+                        names[server_key(heading.strip())] = heading.strip()
+    return names
+
+
 def tool_kind(name: str) -> str:
     return "MCP tool" if name.startswith("mcp__") else "tool"
 
@@ -205,7 +227,7 @@ def ends_listing(line: str) -> bool:
     return line.startswith("# ") or any(entry[0].match(line) for entry in LISTINGS)
 
 
-def server_headings(lines: list[str], start: int, servers: set[str]) -> set[str] | None:
+def server_headings(lines: list[str], start: int, servers: dict[str, str]) -> set[str] | None:
     """The "## " headings of a server listing that name a server. A server's instructions can have
     "## " headings of their own; they stay in its text. None when no heading names a known server,
     and every "## " heading starts an item."""
@@ -218,7 +240,7 @@ def server_headings(lines: list[str], start: int, servers: set[str]) -> set[str]
     return names or None
 
 
-def parse_listing(lines: list[str], start: int, form: str, servers: set[str]) -> tuple[list[tuple[str, str]], int]:
+def parse_listing(lines: list[str], start: int, form: str, servers: dict[str, str]) -> tuple[list[tuple[str, str]], int]:
     """The items of the listing whose header is lines[start], as (name, text),
     and the index of the line after the listing."""
     items: list[tuple[str, list[str]]] = []
@@ -251,7 +273,7 @@ def parse_listing(lines: list[str], start: int, form: str, servers: set[str]) ->
     return [(name, "\n".join(body).strip()) for name, body in items], i
 
 
-def add_listings(item: dict, text: str, path: list[str], store: "Store", servers: set[str]) -> None:
+def add_listings(item: dict, text: str, path: list[str], store: "Store", servers: dict[str, str]) -> None:
     """Give a text node one child per listing in it, and the listing one child
     per item. Each item carries "pick", which the page offers as a checkbox."""
     lines = text.splitlines()
@@ -268,8 +290,11 @@ def add_listings(item: dict, text: str, path: list[str], store: "Store", servers
             listing = node(label, "listing", text_size(body), path + [label], store, text=body)
             for name, part in items:
                 child = node(name, "item", text_size(part), path + [label, name], store, text=part)
-                child["pick"] = {"kind": tool_kind(name) if kind == "tool" else kind, "name": name}
+                if tool_kind(name) != "MCP tool":
+                    child["pick"] = {"kind": "tool" if kind == "tool" else kind, "name": name}
                 listing["children"].append(child)
+            if kind == "tool":
+                group_by_server(listing, servers, store)
             item["children"].append(listing)
         i = max(end, i + 1)
     # A text with several listings is named after all of them, largest first, not after the first
@@ -319,7 +344,7 @@ def has_breakpoint(value) -> bool:
     return isinstance(value, dict) and bool(value.get("cache_control"))
 
 
-def system_tree(blocks: list, store: Store, servers: set[str]) -> dict:
+def system_tree(blocks: list, store: Store, servers: dict[str, str]) -> dict:
     root = node("system", "group", wire_size(blocks), ["system"], store)
     for i, block in enumerate(blocks):
         text = block.get("text", "") if isinstance(block, dict) else str(block)
@@ -335,14 +360,43 @@ def system_tree(blocks: list, store: Store, servers: set[str]) -> dict:
     return root
 
 
-def tools_tree(tools: list, store: Store) -> dict:
+def tools_tree(tools: list, store: Store, servers: dict[str, str]) -> dict:
     root = node("tools", "group", wire_size(tools), ["tools"], store)
     for i, tool in enumerate(tools):
         name = tool.get("name") or tool.get("type") or f"tool {i}"
         child = node(name, "tool", wire_size(tool), ["tools", name], store, text=pretty(tool), bp=has_breakpoint(tool))
-        child["pick"] = {"kind": tool_kind(name), "name": name}
+        if tool_kind(name) != "MCP tool":
+            child["pick"] = {"kind": "tool", "name": name}
         root["children"].append(child)
+    group_by_server(root, servers, store)
     return root
+
+
+def group_by_server(parent: dict, servers: dict[str, str], store: Store) -> None:
+    """Gather a node's MCP tools under one node per server, which carries the server's checkbox. A
+    server is switched off as a whole: one of its tools costs a few tokens as a deferred name, and
+    denying it would leave the server connected."""
+    groups: dict[str, dict] = {}
+    children = []
+    for child in parent["children"]:
+        found = MCP_SERVER_RE.match(child["label"])
+        if not found:
+            children.append(child)
+            continue
+        key = found.group(1)
+        if key not in groups:
+            name = servers.get(key, key)
+            groups[key] = node(name, "server", 0, parent["path"].split("/") + [name], store)
+            groups[key]["pick"] = {"kind": "MCP server", "name": name}
+            children.append(groups[key])
+        group = groups[key]
+        child["path"] = group["path"] + "/" + child["label"]
+        group["children"].append(child)
+        group["chars"] += child["chars"]
+    for group in groups.values():
+        count = len(group["children"])
+        group["label"] += f" ({count} tool{'' if count == 1 else 's'})"
+    parent["children"] = children
 
 
 def block_label(block: dict, tool_names: dict[str, str]) -> str:
@@ -360,7 +414,7 @@ def block_label(block: dict, tool_names: dict[str, str]) -> str:
     return kind
 
 
-def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str], servers: set[str]) -> dict:
+def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str], servers: dict[str, str]) -> dict:
     role = message.get("role", "?")
     content = message.get("content")
     path = ["messages", str(i)]
@@ -383,7 +437,7 @@ def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str]
     return item
 
 
-def messages_tree(messages: list, store: Store, servers: set[str]) -> dict:
+def messages_tree(messages: list, store: Store, servers: dict[str, str]) -> dict:
     root = node("messages", "group", wire_size(messages), ["messages"], store)
     tool_names: dict[str, str] = {}
     for i, message in enumerate(messages):
@@ -485,7 +539,7 @@ def categories(root: dict, store: Store) -> list[dict]:
         if part["label"] == "tools":
             add("System tools", part["tok"] - sum(tool["tok"] for tool in part["children"]), part["path"])
             for tool in part["children"]:
-                add("MCP tools" if tool["label"].startswith("mcp__") else "System tools", tool["tok"], part["path"])
+                add("MCP tools" if tool["kind"] == "server" else "System tools", tool["tok"], part["path"])
         else:
             walk(part, "System prompt" if part["label"] == "system" else "Messages")
     return [{"label": c, "tok": totals[c], "path": paths[c]} for c in CATEGORIES if totals.get(c, 0) > 0]
@@ -505,16 +559,16 @@ def chars_per_token(exchanges: list[dict], position: int) -> tuple[float, str]:
     return FALLBACK_CHARS_PER_TOKEN, "fallback"
 
 
-def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
+def request_tree(exchanges: list[dict], position: int, store: Store, names: dict[str, str]) -> dict:
     exchange = exchanges[position]
     body = exchange["body"]
     record = exchange["record"]
     # Numbered among the requests, not among all calls: token counts and other calls are left out.
     root = node(f"request {position + 1}", "request", wire_size(body), ["request"], store)
-    servers = mcp_servers(body)
+    servers = {key: names.get(key, key) for key in mcp_servers(body)}
     parts = [
         system_tree(system_blocks(body), store, servers),
-        tools_tree(body.get("tools") or [], store),
+        tools_tree(body.get("tools") or [], store, servers),
         messages_tree(body.get("messages") or [], store, servers),
     ]
     other = {k: v for k, v in body.items() if k not in ("system", "tools", "messages")}
@@ -600,8 +654,10 @@ def session_usage(exchanges: list[dict]) -> dict:
 
 def build_profile(exchanges: list[dict]) -> dict:
     store = Store()
-    requests = [request_tree(exchanges, i, store) for i in range(len(exchanges))]
-    return {"requests": requests, "content": store.items, "usage": session_usage(exchanges)}
+    names = server_names(exchanges)
+    requests = [request_tree(exchanges, i, store, names) for i in range(len(exchanges))]
+    return {"requests": requests, "content": store.items, "usage": session_usage(exchanges),
+            "servers": sorted(names.values())}
 
 
 # --- the page --------------------------------------------------------------
@@ -836,7 +892,7 @@ JS = r"""
             }
             lbl.appendChild(el('span', 'name', item.label));
             if (item.bp) lbl.appendChild(el('span', 'bp', 'cache'));
-            var used = item.pick ? usage[usageKey(item.pick)] : undefined;
+            var used = usage[item.pick ? usageKey(item.pick) : 'MCP tool: ' + item.label];
             if (used !== undefined) lbl.appendChild(el('span', 'used', used ? 'used ' + used + '\u00d7' : 'loaded'));
             if (item.seg !== undefined && item.seg !== parentSeg) lbl.appendChild(el('span', 'seg', 'seg ' + (item.seg + 1)));
             row.appendChild(lbl);
@@ -1180,7 +1236,7 @@ JS = r"""
         var deny = [], skills = [], servers = [];
         picked().forEach(function (key) {
             var cut = key.indexOf(': '), kind = key.slice(0, cut), name = key.slice(cut + 2);
-            if (kind === 'tool' || kind === 'MCP tool') deny.push(name);
+            if (kind === 'tool') deny.push(name);
             else if (kind === 'subagent') deny.push('Agent(' + name + ')');
             else if (kind === 'skill') skills.push(name);
             else if (kind === 'MCP server') servers.push(name);
@@ -1206,7 +1262,11 @@ JS = r"""
         if (servers.length) {
             L.push('Disconnect these MCP servers: add these entries to "deniedMcpServers", and keep the entries ' +
                    'already there:');
-            servers.forEach(function (name) { L.push('- ' + JSON.stringify({ serverName: name })); });
+            // A server that sent no instructions is known only as its tool names spell it.
+            servers.forEach(function (name) {
+                L.push('- ' + JSON.stringify({ serverName: name }) + ((data.servers || []).indexOf(name) < 0 ?
+                       ' (as its tool names spell it: use the name `claude mcp list` shows)' : ''));
+            });
             L.push('');
         }
         L.push('Before you write, show me the exact change and ask me. Leave everything else in the file as it is.');
@@ -1300,7 +1360,8 @@ JS = r"""
     if (saved) {
         if (saved.sortBySize !== undefined) state.sortBySize = !!saved.sortBySize;
         state.open = saved.open || {};
-        state.picked = saved.picked || {};
+        // MCP tools are no longer ticked one by one; their servers are.
+        Object.keys(saved.picked || {}).forEach(function (k) { if (k.indexOf('MCP tool: ')) state.picked[k] = true; });
         state.rawView = !!saved.rawView;
         state.query = $('search').value = saved.query || '';
         select(saved.atEnd ? requests.length - 1 : Math.min(saved.req || 0, requests.length - 1), saved.path || 'request');

@@ -35,7 +35,10 @@ puts into the prompt (skills, subagent types, deferred tools, MCP server instruc
 one node per item by `LISTINGS`; each tool and listed item carries a `pick`, which the page shows as
 a checkbox. In the MCP server instructions, a `## ` heading starts a server only when it names one
 of the request's `mcp__SERVER__` tools (`server_key`), because a server's own text can have `## `
-headings too; a listing ends at the next listing's header line. A text with several listings is
+headings too; a listing ends at the next listing's header line. `group_by_server` gathers MCP tools, in `tools` and
+in the tool listings, under one node per server that carries the server's checkbox; the tools carry
+none. A server is named as its instructions' heading names it (`server_names`, session-wide), or by its
+key when it sends none, and the prompt then asks Claude to look the name up. A text with several listings is
 named after all of them, so none hides behind another's name. `session_usage` counts how often
 the session used each item with a `pick` (a call counts once by its id, since every request replays
 the conversation), and the page shows it next to the item. The module is named `profiler.py`

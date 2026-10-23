@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- MCP tools are grouped under their server, which carries the only checkbox: a server is switched
+  off as a whole. One MCP tool costs a few tokens as a deferred name, and denying it left the server
+  connected. A server that sends no instructions can now be ticked too.
 - A search box keeps the parts of a request whose name or text contains the query, and highlights
   it in the tree and the pane; the timeline dims the requests without it. `/` jumps to it, Esc
   clears it.
