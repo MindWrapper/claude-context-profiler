@@ -36,6 +36,16 @@ one node per item by `LISTINGS`; each tool and listed item carries a `pick`, whi
 a checkbox. The module is named `profiler.py` because `profile.py` would shadow the standard
 library's `profile` module.
 
+## The right pane
+
+A part with JSON behind it (a tool, a message or system block, the envelope) shows that JSON as a
+readable tree, `jsonView`: every key in its order, dim keys, long strings as formatted text, and a
+token estimate per object and long string. It measures characters the way Python's `json.dumps`
+writes them, so its numbers match the tree on the left. Plain text parts go through
+`readableText`, a light Markdown renderer (headings, lists, code fences, `code`, **bold**). Both
+build every node with `textContent`. **View JSON** (or **View raw** for plain text) switches to the
+exact JSON or text, and **View formatted** switches back.
+
 ## Check a change here
 
 Record a session (see `.claude/rules/recording.md`), then serve it with

@@ -539,6 +539,26 @@ th { color:var(--muted); font-weight:600; cursor:pointer; user-select:none; }
 th:hover, th.on { color:var(--fg); }
 td a { color:var(--accent); cursor:pointer; }
 .note { color:var(--muted); font-size:12px; margin:.5rem 0; }
+button.small { font-size:12px; padding:.15rem .5rem; margin-left:auto; }
+.jv { font:14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin-top:.6rem; }
+.jv-row { display:flex; align-items:baseline; gap:.5rem; padding:.1rem 0; }
+.jv-click { cursor:pointer; }
+.jv-click:hover .jv-key { color:var(--fg); }
+.jv-caret { width:.8rem; color:var(--muted); font-size:11px; flex:none; }
+.jv-key { color:var(--muted); font:12px ui-monospace, monospace; }
+.jv-val { font:13px ui-monospace, monospace; color:var(--accent); word-break:break-word; }
+.jv-sum { color:var(--muted); font-size:12px; }
+.jv-tok { margin-left:auto; color:var(--muted); font:11px ui-monospace, monospace; flex:none; }
+.jv-kids { margin-left:.35rem; padding-left:.9rem; border-left:1px solid var(--line); }
+.jv-text { max-width:80ch; margin:.2rem 0 .6rem; }
+.jv-text p { margin:.45rem 0; white-space:pre-wrap; word-break:break-word; }
+.jv-text ul { margin:.3rem 0; padding-left:1.2rem; }
+.jv-text li { margin:.15rem 0; white-space:pre-wrap; word-break:break-word; }
+.jv-text .jv-num { color:var(--muted); }
+.jv-text .jv-h { font-weight:600; margin:.8rem 0 .2rem; }
+.jv-text code { font:12px ui-monospace, monospace; background:var(--code); padding:0 .25rem; border-radius:3px; }
+.jv-tag { display:inline-block; font:11px ui-monospace, monospace; color:var(--muted); border:1px solid var(--line);
+          border-radius:3px; padding:0 .3rem; margin:.3rem 0; }
 dialog { width:min(720px, 92vw); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem;
          background:var(--bg); color:var(--fg); }
 dialog::backdrop { background:var(--shade); }
@@ -554,7 +574,7 @@ JS = r"""
     var requests = data.requests, content = data.content;
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { req: 0, path: 'request', sortBySize: true, raw: false, open: {}, paneSort: null, picked: {}, dialog: false };
+    var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -740,14 +760,125 @@ JS = r"""
             });
             pane.appendChild(t);
         }
-        if (item.raw && item.text) {
-            var b = el('button', state.raw ? 'on' : '', state.raw ? 'show text' : 'show raw JSON');
-            b.onclick = function () { state.raw = !state.raw; renderPane(); };
-            pane.appendChild(b);
+        // Structured parts show their JSON as a readable tree; plain text parts
+        // (system prompt sections, listed items) show the text alone.
+        var source = item.raw ? content[item.raw]
+                   : (item.kind === 'tool' || item.kind === 'envelope') && item.text ? content[item.text] : null;
+        var plain = !source && item.text ? content[item.text] : null;
+        if (source || plain) {
+            var view = el('button', 'small', state.rawView ? 'View formatted' : source ? 'View JSON' : 'View raw');
+            view.onclick = function () { state.rawView = !state.rawView; renderPane(); persist(); };
+            facts.appendChild(view);
+            if (state.rawView) pane.appendChild(el('pre', '', source || plain));
+            else pane.appendChild(source ? jsonView(JSON.parse(source), item.path) : readableText(plain));
+        } else if (!item.children.length) {
+            pane.appendChild(el('p', 'note', 'No content in the recording.'));
         }
-        var key = state.raw && item.raw ? item.raw : (item.text || item.raw);
-        if (key) pane.appendChild(el('pre', '', content[key]));
-        else if (!item.children.length) pane.appendChild(el('p', 'note', 'No content in the recording.'));
+    }
+
+    // --- readable raw ------------------------------------------------------
+    // The exact JSON of a part, every key in its order, rendered to read:
+    // dim keys, long strings as formatted text, a token estimate per object
+    // and long string. Recorded text is untrusted, so every node is built with
+    // textContent.
+    function jsonView(value, base) {
+        var ratio = root().info.ratio || 4;
+        // Characters as Python's json.dumps writes them, with a space after
+        // ':' and ',', so the numbers match the rest of the page.
+        var wire = function (v) {
+            if (v === null || typeof v !== 'object') return JSON.stringify(v).length;
+            var list = Array.isArray(v), keys = list ? v.map(function (x, i) { return i; }) : Object.keys(v);
+            var size = 2 + Math.max(0, keys.length - 1) * 2;
+            keys.forEach(function (k) { size += wire(v[k]) + (list ? 0 : JSON.stringify(k).length + 2); });
+            return size;
+        };
+        var tokens = function (v) { return Math.round(wire(v) / ratio); };
+        var isOpen = function (path, depth, v) {
+            var o = state.jsonOpen[path];
+            return o === undefined ? depth === 0 || tokens(v) <= 1500 : o;
+        };
+        var badge = function (row, v) {
+            var t = tokens(v);
+            if (t >= 20) row.appendChild(el('span', 'jv-tok', '≈ ' + n(t)));
+        };
+        var build = function (key, v, path, depth) {
+            var wrap = el('div', 'jv-node'), row = el('div', 'jv-row');
+            if (v !== null && typeof v === 'object') {
+                var list = Array.isArray(v), keys = list ? v.map(function (x, i) { return i; }) : Object.keys(v);
+                var open = isOpen(path, depth, v);
+                row.className += ' jv-click';
+                row.appendChild(el('span', 'jv-caret', open ? '▾' : '▸'));
+                if (key !== null) row.appendChild(el('span', 'jv-key', key));
+                if (!open) row.appendChild(el('span', 'jv-sum', list ? keys.length + ' items' : keys.length + ' keys'));
+                badge(row, v);
+                row.onclick = function () { state.jsonOpen[path] = !open; renderPane(); };
+                wrap.appendChild(row);
+                if (open) {
+                    var kids = el('div', 'jv-kids');
+                    keys.forEach(function (k) { kids.appendChild(build(String(k), v[k], path + '/' + k, depth + 1)); });
+                    wrap.appendChild(kids);
+                }
+            } else if (typeof v === 'string' && (v.length > 80 || v.indexOf('\n') >= 0)) {
+                if (key !== null) row.appendChild(el('span', 'jv-key', key));
+                badge(row, v);
+                wrap.appendChild(row);
+                wrap.appendChild(readableText(v));
+            } else {
+                if (key !== null) row.appendChild(el('span', 'jv-key', key));
+                row.appendChild(el('span', 'jv-val', typeof v === 'string' ? '"' + v + '"' : String(v)));
+                wrap.appendChild(row);
+            }
+            return wrap;
+        };
+        var box = el('div', 'jv');
+        if (value !== null && typeof value === 'object') {
+            (Array.isArray(value) ? value.map(function (x, i) { return i; }) : Object.keys(value)).forEach(function (k) {
+                box.appendChild(build(String(k), value[k], base + '/' + k, 1));
+            });
+        } else {
+            box.appendChild(build(null, value, base, 0));
+        }
+        return box;
+    }
+
+    // Light Markdown: headings, lists, code fences, `code` and **bold**. Lines
+    // that are only a tag, like <system-reminder>, become small labels.
+    function readableText(text) {
+        var box = el('div', 'jv-text'), lines = text.split('\n'), para = null, list = null;
+        var inline = function (target, s) {
+            s.split(/(`[^`\n]+`|\*\*[^*\n]+\*\*)/).forEach(function (part) {
+                if (!part) return;
+                if (part.charAt(0) === '`' && part.length > 2) target.appendChild(el('code', '', part.slice(1, -1)));
+                else if (part.slice(0, 2) === '**' && part.length > 4) target.appendChild(el('strong', '', part.slice(2, -2)));
+                else target.appendChild(document.createTextNode(part));
+            });
+        };
+        var end = function () { para = null; list = null; };
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i], m;
+            if (/^\s*```/.test(line)) {
+                var code = [];
+                for (i++; i < lines.length && !/^\s*```/.test(lines[i]); i++) code.push(lines[i]);
+                end(); box.appendChild(el('pre', '', code.join('\n')));
+            } else if (/^\s*<\/?[A-Za-z][\w-]*>\s*$/.test(line)) {
+                end(); box.appendChild(el('div', 'jv-tag', line.trim()));
+            } else if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+                end(); var h = el('div', 'jv-h'); inline(h, m[2]); box.appendChild(h);
+            } else if ((m = /^(\s*)([-*]|\d+\.)\s+(.*)$/.exec(line))) {
+                para = null;
+                if (!list) { list = el('ul'); box.appendChild(list); }
+                var li = el('li'); li.style.marginLeft = (m[1].length / 2) + 'em';
+                if (/\d/.test(m[2])) li.appendChild(el('span', 'jv-num', m[2] + ' '));
+                inline(li, m[3]); list.appendChild(li);
+            } else if (!line.trim()) {
+                end();
+            } else {
+                list = null;
+                if (!para) { para = el('p'); box.appendChild(para); } else para.appendChild(document.createTextNode('\n'));
+                inline(para, line);
+            }
+        }
+        return box;
     }
 
     // --- selected items ---------------------------------------------------
@@ -853,7 +984,7 @@ JS = r"""
         try {
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, atEnd: state.req === requests.length - 1, path: state.path,
-                sortBySize: state.sortBySize, open: state.open, picked: state.picked, dialog: state.dialog
+                sortBySize: state.sortBySize, open: state.open, picked: state.picked, dialog: state.dialog, rawView: state.rawView
             }));
         } catch (e) { /* no storage: the page still works, it just forgets */ }
     }
@@ -884,6 +1015,7 @@ JS = r"""
         if (saved.sortBySize !== undefined) state.sortBySize = !!saved.sortBySize;
         state.open = saved.open || {};
         state.picked = saved.picked || {};
+        state.rawView = !!saved.rawView;
         select(saved.atEnd ? requests.length - 1 : Math.min(saved.req || 0, requests.length - 1), saved.path || 'request');
         // A live reload while the dialog is open brings it back.
         if (saved.dialog && picked().length) openPrompt();

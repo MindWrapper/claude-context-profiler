@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The page drops its title, totals and footnote, and sorts each request by size from the start.
 - The page shows tokens only, no character counts.
+- The right pane shows each part's JSON as a readable tree: long strings as formatted text, Markdown
+  rendered, a token estimate per key, and big objects folded. **View JSON** shows the exact JSON.
 - **Disable prompt (N)** replaces **copy selected**: it opens a dialog with a prompt that asks Claude
   to switch the ticked items off in `~/.claude/settings.json`, showing the change and asking before
   it writes. The dialog shows the prompt in full, since Claude Code folds a pasted block into one line.
