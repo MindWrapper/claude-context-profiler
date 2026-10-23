@@ -66,7 +66,7 @@ After the tests pass, record a real one-line session from an empty temporary fol
 what it wrote:
 
 ```bash
-CLAUDE_CONTEXT_PROFILER_HOME=$TMP/home CLAUDE_CONTEXT_PROFILER_OPEN=0 \
+CLAUDE_CONTEXT_PROFILER_HOME=$TMP/home \
   PYTHONPATH=$REPO/src python3 -m claude_context_profiler -p "say ok" < /dev/null
 ```
 

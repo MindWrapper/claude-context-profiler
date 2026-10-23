@@ -145,11 +145,12 @@ class Launcher(unittest.TestCase):
             "PYTHONPATH": str(SRC),
             "ANTHROPIC_BASE_URL": f"http://127.0.0.1:{self.api.server_address[1]}",
             "CLAUDE_CONTEXT_PROFILER_HOME": str(home),
+            "CLAUDE_CONTEXT_PROFILER_OPEN": "1",  # the browser is off by default; test the opt-in
             "BROWSER": str(browser),
             "FAKE_BROWSER_LOG": str(opened_log),
             "FAKE_CLAUDE_RESULT": str(result_file),
         })
-        for name in ("CLAUDE_CONTEXT_PROFILER_OPEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
+        for name in ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX",
                      "CLAUDE_CODE_USE_FOUNDRY", "HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
             env.pop(name, None)
 

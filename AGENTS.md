@@ -1,8 +1,8 @@
 # claude-context-profiler
 
 `claude-context-profiler` is a context profiler for Claude Code. It records one session and shows
-what every request to the model is made of: each part, its estimated tokens and its full text. The
-profiler page opens in the browser and follows the session live.
+what every request to the model is made of: each part, its estimated tokens and its full text. Claude's
+start screen shows the address of the profiler page, which follows the session live.
 
 The profiler never changes the user's config itself, and does not suggest what to switch off; that
 is the user's choice. The page lets the user tick tools, skills, subagent types and MCP servers and
@@ -25,14 +25,14 @@ only, Python 3.9 or later, on macOS, Linux and Windows.
 ## Command line
 
 ```
-ccprof [claude args...]   claude, recorded, with the profiler page live in the browser
+ccprof [claude args...]   claude, recorded, with the address of the live profiler page on its start screen
 ```
 
 `ccprof` and `claude-context-profiler` are the same command. Every argument goes to `claude`
 unchanged, plus one `--settings` that shows the page's address on Claude's start screen. Settings
 come from `CLAUDE_CONTEXT_PROFILER_HOME` (default `~/.claude-context-profiler`) and
-`CLAUDE_CONTEXT_PROFILER_OPEN=0` (do not open the browser), so the command never takes a flag that
-belongs to `claude`.
+`CLAUDE_CONTEXT_PROFILER_OPEN=1` (also open the browser at the first API call), so the command
+never takes a flag that belongs to `claude`.
 
 ## Where the details are
 

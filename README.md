@@ -26,9 +26,8 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
    `ccprof` is the short name; `claude-context-profiler` does the same.
 
-As Claude Code starts, a page opens in your browser and follows the session live. Its address is
-also on Claude's start screen, as a link, in case the browser does not open. Open a request's tree, click any
-part to read it, and sort by size to see what costs the most. To switch something off, tick it and
+As Claude Code starts, its start screen shows the address of a page that follows the session live.
+Click it to open the page in your browser. Open a request's tree, click any part to read it, and sort by size to see what costs the most. To switch something off, tick it and
 press **Disable prompt**. A dialog shows the prompt; press **Copy** and paste it into
 Claude, which shows you the change to `~/.claude/settings.json` and asks before it writes. When you
 quit Claude, the recording stops and the page is saved.
@@ -69,8 +68,8 @@ setting `enableArtifact: false`, which no other settings file can turn back on. 
   `uvx --from git+ssh://git@github.com/MindWrapper/claude-context-profiler ccprof`.
 - To update: `uv tool upgrade claude-context-profiler`. To remove:
   `uv tool uninstall claude-context-profiler`.
-- `CLAUDE_CONTEXT_PROFILER_OPEN=0` keeps the browser closed. `CLAUDE_CONTEXT_PROFILER_HOME` moves
-  the recordings (default `~/.claude-context-profiler`).
+- `CLAUDE_CONTEXT_PROFILER_OPEN=1` also opens the page in your browser at the first API call.
+  `CLAUDE_CONTEXT_PROFILER_HOME` moves the recordings (default `~/.claude-context-profiler`).
 - The repo is private for now, so installing needs SSH access to it.
 
 ## Without uv

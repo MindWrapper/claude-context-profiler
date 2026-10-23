@@ -13,7 +13,7 @@ empty folder: `/tmp/demo`.
 
    ```bash
    rm -rf /tmp/demo && mkdir -p /tmp/demo/my-project && cd /tmp/demo/my-project && \
-     CLAUDE_CONTEXT_PROFILER_HOME=/tmp/demo/home CLAUDE_CONTEXT_PROFILER_OPEN=0 \
+     CLAUDE_CONTEXT_PROFILER_HOME=/tmp/demo/home \
      PYTHONPATH=$REPO/src python3 -m claude_context_profiler \
      -p "What does this directory contain? Answer in one line." < /dev/null
    ```

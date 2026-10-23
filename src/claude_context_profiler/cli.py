@@ -181,7 +181,8 @@ class Recording:
 
             viewer_log = self.run_dir / "viewer.log"
             viewer_args = [run, "--port", "0"]
-            if os.environ.get("CLAUDE_CONTEXT_PROFILER_OPEN", "1") != "0":
+            # The page's address is on Claude's start screen; the browser opens only when asked.
+            if os.environ.get("CLAUDE_CONTEXT_PROFILER_OPEN", "0") == "1":
                 viewer_args.append("--open")
             say(f"recording to {self.run_dir}")
             self.start_viewer(viewer_args, viewer_log)
