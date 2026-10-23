@@ -553,10 +553,55 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
     return root
 
 
+COMMAND_RE = re.compile(r"<command-name>/(\S+?)</command-name>")
+
+
+def session_usage(exchanges: list[dict]) -> dict:
+    """How often the session used each item the page offers to tick, by its pick key ("tool: Bash"):
+    tools Claude called, skills it ran or the user typed as /NAME, subagent types it started, and MCP
+    servers whose tools it called. A deferred tool that ToolSearch loaded but Claude never called
+    counts as 0. Every request replays the conversation, so a call counts once, by its id."""
+    calls: dict[str, dict] = {}
+    commands: set[tuple[int, int, str]] = set()
+    for exchange in exchanges:
+        for i, message in enumerate(exchange["messages"]):
+            content = message.get("content")
+            for block in content if isinstance(content, list) else [{"type": "text", "text": content or ""}]:
+                if block.get("type") == "tool_use":
+                    calls[block.get("id", "")] = block
+                elif block.get("type") == "text" and message.get("role") == "user":
+                    for name in COMMAND_RE.findall(block.get("text", "")):
+                        commands.add((exchange["chain"], i, name))
+        for block in exchange["answer"]["blocks"]:
+            if block.get("type") == "tool_use":
+                calls[block.get("id", "")] = block
+
+    usage: dict[str, int] = {}
+
+    def count(key: str) -> None:
+        usage[key] = usage.get(key, 0) + 1
+
+    for block in calls.values():
+        name, args = block.get("name", ""), block.get("input") or {}
+        count(f"{tool_kind(name)}: {name}")
+        if name.startswith("mcp__"):
+            count(f"MCP server: {name.split('__')[1]}")
+        elif name == "Skill" and args.get("skill"):
+            count(f"skill: {args['skill']}")
+        elif name in ("Agent", "Task") and args.get("subagent_type"):
+            count(f"subagent: {args['subagent_type']}")
+        elif name == "ToolSearch" and str(args.get("query", "")).startswith("select:"):
+            for loaded in str(args["query"])[len("select:") :].split(","):
+                usage.setdefault(f"{tool_kind(loaded.strip())}: {loaded.strip()}", 0)
+    for _, _, name in commands:
+        count(f"skill: {name}")
+    return usage
+
+
 def build_profile(exchanges: list[dict]) -> dict:
     store = Store()
     requests = [request_tree(exchanges, i, store) for i in range(len(exchanges))]
-    return {"requests": requests, "content": store.items}
+    return {"requests": requests, "content": store.items, "usage": session_usage(exchanges)}
 
 
 # --- the page --------------------------------------------------------------
@@ -611,6 +656,7 @@ button.on { background:var(--code); }
 .row .bp { font:600 10px/1 ui-monospace, monospace; color:var(--accent); border:1px solid var(--accent);
            border-radius:3px; padding:1px 3px; flex:none; }
 .row .seg { font:10px ui-monospace, monospace; color:var(--muted); flex:none; }
+.row .used { font:10px ui-monospace, monospace; color:var(--answer); flex:none; }
 .row .tick { margin:0; flex:none; cursor:pointer; }
 .pane { padding:1rem 1.5rem; }
 .pane h2 { font-size:1rem; margin:0 0 .3rem; word-break:break-word; }
@@ -664,7 +710,7 @@ button.primary { background:var(--accent); border-color:var(--accent); color:#ff
 JS = r"""
 (function () {
     var data = JSON.parse(document.getElementById('data').textContent);
-    var requests = data.requests, content = data.content;
+    var requests = data.requests, content = data.content, usage = data.usage || {};
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
     var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false };
@@ -769,6 +815,8 @@ JS = r"""
             }
             lbl.appendChild(el('span', 'name', item.label));
             if (item.bp) lbl.appendChild(el('span', 'bp', 'cache'));
+            var used = item.pick ? usage[usageKey(item.pick)] : undefined;
+            if (used !== undefined) lbl.appendChild(el('span', 'used', used ? 'used ' + used + '\u00d7' : 'loaded'));
             if (item.seg !== undefined && item.seg !== parentSeg) lbl.appendChild(el('span', 'seg', 'seg ' + (item.seg + 1)));
             row.appendChild(lbl);
             var bar = el('div', 'bar'); var fill = el('i');
@@ -1037,6 +1085,10 @@ JS = r"""
     // A tool, skill, subagent type or MCP server can be ticked wherever it shows
     // up; the same kind and name is one selection across all requests.
     function pickKey(pick) { return pick.kind + ': ' + pick.name; }
+    // Usage counts a server under its name as tool names spell it: "claude.ai Todoist" is claude_ai_Todoist.
+    function usageKey(pick) {
+        return pick.kind === 'MCP server' ? 'MCP server: ' + pick.name.replace(/[^\w-]/g, '_') : pickKey(pick);
+    }
     function picked() { return Object.keys(state.picked).sort(); }
     function togglePick(pick, on) {
         if (on) state.picked[pickKey(pick)] = true; else delete state.picked[pickKey(pick)];

@@ -36,7 +36,9 @@ one node per item by `LISTINGS`; each tool and listed item carries a `pick`, whi
 a checkbox. In the MCP server instructions, a `## ` heading starts a server only when it names one
 of the request's `mcp__SERVER__` tools (`server_key`), because a server's own text can have `## `
 headings too; a listing ends at the next listing's header line. A text with several listings is
-named after all of them, so none hides behind another's name. The module is named `profiler.py`
+named after all of them, so none hides behind another's name. `session_usage` counts how often
+the session used each item with a `pick` (a call counts once by its id, since every request replays
+the conversation), and the page shows it next to the item. The module is named `profiler.py`
 because `profile.py` would shadow the standard library's `profile` module.
 
 ## The timeline

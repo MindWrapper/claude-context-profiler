@@ -27,7 +27,7 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
    `ccprof` is the short name; `claude-context-profiler` does the same.
 
 As Claude Code starts, its start screen shows the address of a page that follows the session live.
-Click it to open the page in your browser. Open a request's tree, click any part to read it, and sort by size to see what costs the most. To switch something off, tick it and
+Click it to open the page in your browser. Open a request's tree, click any part to read it, and sort by size to see what costs the most. An item the session used says how often ("used 3×"). To switch something off, tick it and
 press **Disable prompt**. A dialog shows the prompt; press **Copy** and paste it into
 Claude, which shows you the change to `~/.claude/settings.json` and asks before it writes. A
 request's own pane shows Claude's session ID and the recording's folder, each with a copy button.
