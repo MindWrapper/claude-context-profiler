@@ -1,9 +1,9 @@
 name: tests
 
+# Only by hand, to spend the Actions allowance where it counts: `gh workflow run tests.yml`, or
+# `gh workflow run tests.yml --ref BRANCH` for a branch.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

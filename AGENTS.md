@@ -49,8 +49,8 @@ own when it opens a matching file.
 ## Check your change
 
 Run `python3 -m unittest discover -s tests`; it must pass before you call a change done. CI runs the
-same tests on Linux, macOS and Windows with Python 3.9 and the latest Python. A change to the
-launcher, proxy or page also needs the real-session check in its rules file.
+same tests on Linux, macOS and Windows, but only when started by hand: `gh workflow run tests.yml`.
+A change to the launcher, proxy or page also needs the real-session check in its rules file.
 
 ## Repository etiquette
 

@@ -10,9 +10,9 @@ There is nothing to install: clone the repo, and use Python 3.9 or later.
 python -m unittest discover -s tests
 ```
 
-CI runs the same tests on Linux, macOS and Windows, with Python 3.9 and the latest Python. For a
-change to the launcher, the proxy or the page, also record a real session and look at the page: the
-steps are in [.claude/rules/recording.md](.claude/rules/recording.md#check-a-change-here).
+Before merging, the maintainer runs the same tests in CI on Linux, macOS and Windows, with Python
+3.9 and the latest Python. For a change to the launcher, the proxy or the page, also record a real
+session and look at the page: the steps are in [.claude/rules/recording.md](.claude/rules/recording.md#check-a-change-here).
 
 ## Ground rules
 
