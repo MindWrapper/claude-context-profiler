@@ -37,6 +37,19 @@ def is_messages_call(record: dict) -> bool:
     return record.get("method") == "POST" and path == MESSAGES_PATH and "request_json" in record
 
 
+def session_id(record: dict) -> str | None:
+    """Claude Code's session ID, from the header it sends, or else from the request's metadata."""
+    header = (record.get("request_headers") or {}).get("x-claude-code-session-id")
+    if header:
+        return header
+    user_id = ((record.get("request_json") or {}).get("metadata") or {}).get("user_id") or ""
+    try:
+        return json.loads(user_id).get("session_id")
+    except (ValueError, AttributeError):
+        # An older Claude Code writes user_id as "user_…_account_…_session_<id>".
+        return user_id.rpartition("_session_")[2] or None
+
+
 def parse_sse(text: str) -> list[dict]:
     events = []
     for block in text.split("\n\n"):

@@ -28,6 +28,7 @@ from .reader import (
     esc,
     is_messages_call,
     load_run,
+    session_id,
     system_blocks,
 )
 
@@ -453,6 +454,7 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
     row = exchange["row"]
     root["info"] = {
         "index": record["index"],
+        "session": session_id(record),
         "chain": exchange["chain"],
         "first_in_chain": exchange["first_in_chain"],
         "model": body.get("model", "?"),
@@ -538,6 +540,10 @@ button.on { background:var(--code); }
 .facts { display:flex; flex-wrap:wrap; gap:.3rem .9rem; font-size:13px; color:var(--muted); margin-bottom:.8rem; }
 .facts b { color:var(--fg); font-weight:500; font-variant-numeric:tabular-nums; }
 .warn { color:var(--warn); }
+.ids { display:grid; grid-template-columns:auto 1fr auto; gap:.25rem .6rem; align-items:center; font-size:12px;
+       color:var(--muted); margin:-.3rem 0 .9rem; }
+.ids code { font:12px ui-monospace, monospace; color:var(--fg); word-break:break-all; user-select:all; }
+.ids button { font-size:11px; padding:.05rem .45rem; }
 pre { margin:.4rem 0; padding:.6rem .7rem; background:var(--code); border-radius:6px; overflow:auto;
       white-space:pre-wrap; word-break:break-word; font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; font-size:13px; margin:.5rem 0 1rem; }
@@ -727,6 +733,22 @@ JS = r"""
         box.appendChild(s);
     }
 
+    // The session ID and the recording's folder, to paste into a terminal or a bug report.
+    function ids(info) {
+        var box = el('div', 'ids');
+        [['session', info.session], ['folder', data.run_dir]].forEach(function (pair) {
+            if (!pair[1]) return;
+            var b = el('button', '', 'copy');
+            b.onclick = function () {
+                copyText(pair[1], function () { b.textContent = 'copied'; }, function () { b.textContent = 'select it'; });
+            };
+            box.appendChild(el('span', '', pair[0]));
+            box.appendChild(el('code', '', pair[1]));
+            box.appendChild(b);
+        });
+        return box;
+    }
+
     function renderPane() {
         var pane = $('pane');
         pane.innerHTML = '';
@@ -755,6 +777,7 @@ JS = r"""
             if (item.bp) fact(facts, '', 'breakpoint ends here', 'warn');
         }
         pane.appendChild(facts);
+        if (item.kind === 'request') pane.appendChild(ids(info));
 
         if (item.children.length) {
             var t = el('table');
@@ -1097,8 +1120,10 @@ def render_run(run_dir: Path) -> str:
     if not calls:
         raise ValueError(f"{len(records)} records in {run_dir}, none of them a {MESSAGES_PATH} call")
     exchanges = build_exchanges(calls)
+    run_dir = run_dir.resolve()
     profile = build_profile(exchanges)
-    return render_page(run_dir.resolve(), profile)
+    profile["run_dir"] = str(run_dir)
+    return render_page(run_dir, profile)
 
 
 def build(run_dir: Path, out: Path | None = None) -> Path:
