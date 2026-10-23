@@ -33,8 +33,10 @@ This project adds:
 `profiler.py` builds a tree of each request with estimated tokens per node. The listings Claude Code
 puts into the prompt (skills, subagent types, deferred tools, MCP server instructions) are split into
 one node per item by `LISTINGS`; each tool and listed item carries a `pick`, which the page shows as
-a checkbox. The module is named `profiler.py` because `profile.py` would shadow the standard
-library's `profile` module.
+a checkbox. In the MCP server instructions, a `## ` heading starts a server only when it names one
+of the request's `mcp__SERVER__` tools (`server_key`), because a server's own text can have `## `
+headings too; a listing ends at the next listing's header line. The module is named `profiler.py`
+because `profile.py` would shadow the standard library's `profile` module.
 
 ## The timeline
 

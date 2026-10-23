@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- MCP server instructions are split into one item per server again, so each can be read and ticked.
+  Claude Code now puts a sentence before the servers, and a server's own text can have `##` headings.
 - A request's pane shows Claude's session ID and the recording's folder, each with a copy button.
 - A timeline replaces the row of request buttons: one bar per request, its height the prompt's
   tokens, so a long session stays one row. ‹ › and the arrow keys step through it.

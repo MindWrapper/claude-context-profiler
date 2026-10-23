@@ -183,16 +183,46 @@ LISTINGS = [
 ]
 BULLET_RE = re.compile(r"^- (\S+?):(?: |$)")
 NAME_RE = re.compile(r"^\S+$")
+MCP_SERVER_RE = re.compile(r"mcp__([\w-]+?)__")
+
+
+def mcp_servers(body: dict) -> set[str]:
+    """The MCP servers a request names in its tools, as their tool names spell them."""
+    return set(MCP_SERVER_RE.findall(json.dumps(body, ensure_ascii=False)))
+
+
+def server_key(heading: str) -> str:
+    """A server's name as Claude Code spells it in tool names: "claude.ai Todoist" is claude_ai_Todoist."""
+    return re.sub(r"[^\w-]", "_", heading)
 
 
 def tool_kind(name: str) -> str:
     return "MCP tool" if name.startswith("mcp__") else "tool"
 
 
-def parse_listing(lines: list[str], start: int, form: str) -> tuple[list[tuple[str, str]], int]:
+def ends_listing(line: str) -> bool:
+    """A heading of the top level, or the header of the next listing, which can follow without one."""
+    return line.startswith("# ") or any(entry[0].match(line) for entry in LISTINGS)
+
+
+def server_headings(lines: list[str], start: int, servers: set[str]) -> set[str] | None:
+    """The "## " headings of a server listing that name a server. A server's instructions can have
+    "## " headings of their own; they stay in its text. None when no heading names a known server,
+    and every "## " heading starts an item."""
+    names = set()
+    for line in lines[start + 1 :]:
+        if ends_listing(line):
+            break
+        if line.startswith("## ") and server_key(line[3:].strip()) in servers:
+            names.add(line[3:].strip())
+    return names or None
+
+
+def parse_listing(lines: list[str], start: int, form: str, servers: set[str]) -> tuple[list[tuple[str, str]], int]:
     """The items of the listing whose header is lines[start], as (name, text),
     and the index of the line after the listing."""
     items: list[tuple[str, list[str]]] = []
+    headings = server_headings(lines, start, servers) if form == "headings" else None
     i = start + 1
     while i < len(lines) and not lines[i].strip():
         i += 1
@@ -210,20 +240,18 @@ def parse_listing(lines: list[str], start: int, form: str) -> tuple[list[tuple[s
                 items[-1][1].append(line)  # a description that goes on for more lines
             elif line.strip():
                 break
-        else:  # headings
-            if line.startswith("## "):
-                items.append((line[3:].strip(), [line]))
-            elif line.startswith("# "):
+        else:  # headings; a line of introduction may come before the first
+            if ends_listing(line):
                 break
+            if line.startswith("## ") and (headings is None or line[3:].strip() in headings):
+                items.append((line[3:].strip(), [line]))
             elif items:
                 items[-1][1].append(line)
-            elif line.strip():
-                break
         i += 1
     return [(name, "\n".join(body).strip()) for name, body in items], i
 
 
-def add_listings(item: dict, text: str, path: list[str], store: "Store") -> None:
+def add_listings(item: dict, text: str, path: list[str], store: "Store", servers: set[str]) -> None:
     """Give a text node one child per listing in it, and the listing one child
     per item. Each item carries "pick", which the page offers as a checkbox."""
     lines = text.splitlines()
@@ -234,7 +262,7 @@ def add_listings(item: dict, text: str, path: list[str], store: "Store") -> None
             i += 1
             continue
         _, label, kind, form = hit
-        items, end = parse_listing(lines, i, form)
+        items, end = parse_listing(lines, i, form, servers)
         if items:
             body = "\n".join(lines[i:end]).strip()
             listing = node(label, "listing", text_size(body), path + [label], store, text=body)
@@ -285,7 +313,7 @@ def has_breakpoint(value) -> bool:
     return isinstance(value, dict) and bool(value.get("cache_control"))
 
 
-def system_tree(blocks: list, store: Store) -> dict:
+def system_tree(blocks: list, store: Store, servers: set[str]) -> dict:
     root = node("system", "group", wire_size(blocks), ["system"], store)
     for i, block in enumerate(blocks):
         text = block.get("text", "") if isinstance(block, dict) else str(block)
@@ -293,10 +321,10 @@ def system_tree(blocks: list, store: Store) -> dict:
         item = node(label_text(text), "text", wire_size(block), path, store, text=text, raw=block, bp=has_breakpoint(block))
         for name, body in split_sections(text):
             section = node(name, "section", text_size(body), path + [name], store, text=body)
-            add_listings(section, body, path + [name], store)
+            add_listings(section, body, path + [name], store, servers)
             item["children"].append(section)
         if not item["children"]:
-            add_listings(item, text, path, store)
+            add_listings(item, text, path, store, servers)
         root["children"].append(item)
     return root
 
@@ -326,7 +354,7 @@ def block_label(block: dict, tool_names: dict[str, str]) -> str:
     return kind
 
 
-def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str]) -> dict:
+def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str], servers: set[str]) -> dict:
     role = message.get("role", "?")
     content = message.get("content")
     path = ["messages", str(i)]
@@ -335,25 +363,25 @@ def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str]
         item["text"] = store.put(content)
         item["label"] = f"{i} {role}: {label_text(content)}"
         item["bp"] = has_breakpoint(message)
-        add_listings(item, content, path, store)
+        add_listings(item, content, path, store, servers)
         return item
     for j, block in enumerate(content or []):
         label = block_label(block, tool_names)
         kind = block.get("type", "?")
         child = node(label, kind, wire_size(block), path + [str(j)], store, text=block_text(block), raw=block, bp=has_breakpoint(block))
         if kind == "text":
-            add_listings(child, block.get("text", ""), path + [str(j)], store)
+            add_listings(child, block.get("text", ""), path + [str(j)], store, servers)
         item["children"].append(child)
     summary = ", ".join(child["label"] for child in item["children"]) or "(empty)"
     item["label"] = f"{i} {role}: {shorten(summary)}"
     return item
 
 
-def messages_tree(messages: list, store: Store) -> dict:
+def messages_tree(messages: list, store: Store, servers: set[str]) -> dict:
     root = node("messages", "group", wire_size(messages), ["messages"], store)
     tool_names: dict[str, str] = {}
     for i, message in enumerate(messages):
-        root["children"].append(message_node(i, message, store, tool_names))
+        root["children"].append(message_node(i, message, store, tool_names, servers))
     return root
 
 
@@ -434,10 +462,11 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
     record = exchange["record"]
     # Numbered among the requests, not among all calls: token counts and other calls are left out.
     root = node(f"request {position + 1}", "request", wire_size(body), ["request"], store)
+    servers = mcp_servers(body)
     parts = [
-        system_tree(system_blocks(body), store),
+        system_tree(system_blocks(body), store, servers),
         tools_tree(body.get("tools") or [], store),
-        messages_tree(body.get("messages") or [], store),
+        messages_tree(body.get("messages") or [], store, servers),
     ]
     other = {k: v for k, v in body.items() if k not in ("system", "tools", "messages")}
     envelope = root["chars"] - sum(part["chars"] for part in parts)
