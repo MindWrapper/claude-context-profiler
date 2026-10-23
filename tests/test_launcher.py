@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import subprocess
 import sys
@@ -168,7 +169,10 @@ class Launcher(unittest.TestCase):
                         f"the browser was not opened: {result}{report}")
         # Claude's start screen shows the address the launcher printed.
         page_url = run.stderr.split("ccprof: live page at ")[1].split()[0]
-        self.assertEqual(result["greeting"], f"context profiler: {page_url}", report)
+        greeting = result["greeting"] or ""
+        self.assertIn(f"\x1b]8;;{page_url}\x1b\\", greeting, f"the address is not a link: {result}{report}")
+        visible = re.sub(r"\x1b\]8;;[^\x1b]*\x1b\\", "", greeting)
+        self.assertIn(f"Context profiler  \u2192  {page_url}", visible, f"{result}{report}")
 
         # The key went upstream, but the recording blanked it, and the final page was written.
         self.assertEqual(FakeAPI.received[0]["x-api-key"], "FAKE-API-KEY")
