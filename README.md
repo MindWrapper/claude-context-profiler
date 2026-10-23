@@ -51,14 +51,17 @@ Claude, with your approval. These are the entries it uses, if you prefer to edit
 | To switch off                     | Add                                                         |
 |-----------------------------------|-------------------------------------------------------------|
 | a tool, e.g. `WebFetch`           | its name to `permissions.deny`                              |
-| an MCP server or one of its tools | `mcp__SERVER` or `mcp__SERVER__TOOL` to `permissions.deny`  |
+| an MCP server                     | `{"serverName": "NAME"}` to `deniedMcpServers`              |
+| one tool of an MCP server         | `mcp__SERVER__TOOL` to `permissions.deny`                   |
 | a subagent type                   | `Agent(NAME)` to `permissions.deny`                         |
 | a plugin                          | `"NAME@MARKETPLACE": false` in `enabledPlugins`             |
 | a skill                           | `"NAME": "off"` in `skillOverrides`                         |
 
 `permissions.deny` is the easiest to undo: remove an entry mid-session and the tool is back on the
 next request, without breaking the prompt cache. For the Artifact tool, deny `Artifact` rather than
-setting `enableArtifact: false`, which no other settings file can turn back on. See the
+setting `enableArtifact: false`, which no other settings file can turn back on. A server in
+`deniedMcpServers` is disconnected: Claude Code no longer connects to it, in any project, so neither
+its tools nor its instructions reach the context. See the
 [settings docs](https://code.claude.com/docs/en/settings).
 
 ## Options and updates

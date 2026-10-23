@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- The Disable prompt disconnects a ticked MCP server with a `deniedMcpServers` entry, so Claude Code
+  no longer connects to it. The `mcp__SERVER` deny rule it used before left the server connected.
 - A text that holds several listings is named after all of them ("listings: skills, MCP servers, …"),
   so the MCP servers no longer hide under "skills listing".
 - A request's pane shows its tokens in `/context`'s categories (System prompt, System tools, MCP

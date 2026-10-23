@@ -1077,10 +1077,12 @@ JS = r"""
                    'off, tell me instead of guessing.');
             L.push('');
         }
+        // deniedMcpServers keeps Claude Code from connecting to the server at all, so its tools and
+        // instructions are gone; a "permissions" > "deny" rule would leave it connected.
         if (servers.length) {
-            L.push('Switch off these MCP servers: ' + servers.join(', ') + '.');
-            L.push('Add "mcp__SERVER" to "permissions" > "deny", with SERVER written exactly as it appears in the ' +
-                   'server\'s tool names (mcp__SERVER__TOOL).');
+            L.push('Disconnect these MCP servers: add these entries to "deniedMcpServers", and keep the entries ' +
+                   'already there:');
+            servers.forEach(function (name) { L.push('- ' + JSON.stringify({ serverName: name })); });
             L.push('');
         }
         L.push('Before you write, show me the exact change and ask me. Leave everything else in the file as it is.');

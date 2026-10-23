@@ -7,8 +7,8 @@ start screen shows the address of the profiler page, which follows the session l
 The profiler never changes the user's config itself, and does not suggest what to switch off; that
 is the user's choice. The page lets the user tick tools, skills, subagent types and MCP servers and
 copy a prompt that asks Claude to switch them off in `~/.claude/settings.json`. Tools and subagent
-types become exact `permissions.deny` entries; for skills and MCP servers the prompt states the rule
-and has Claude check with the user. Claude shows the change and asks before it writes.
+types become exact `permissions.deny` entries, and MCP servers exact `deniedMcpServers` entries, which
+disconnect them; for skills the prompt states the rule and has Claude check with the user. Claude shows the change and asks before it writes.
 
 `README.md` is the user-facing spec. This is a bare first version: it covers the main case only, and
 the owner grows it step by step. The package is `src/claude_context_profiler/`: standard library
