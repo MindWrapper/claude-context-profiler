@@ -4,8 +4,7 @@ Claude Context Profiler is a local tool designed to help you inspect and manage 
 
 ![The context profiler page](docs/screenshot.png)
 
-**Example:** switching off two unused tools took 14,494 tokens (31%) off every request.
-[See the before and after](docs/before-after.md).
+**Example:** switching off two unused tools freed up 14,494 tokens in the context.
 
 ## Quick start
 
