@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- A search box keeps the parts of a request whose name or text contains the query, and highlights
+  it in the tree and the pane; the timeline dims the requests without it. `/` jumps to it, Esc
+  clears it.
 - A tool, skill, subagent type or MCP server that the session used shows how often, "used 3×",
   counted over the whole recording; a deferred tool that was loaded but never called shows "loaded".
 - The Disable prompt disconnects a ticked MCP server with a `deniedMcpServers` entry, so Claude Code

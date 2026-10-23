@@ -609,10 +609,10 @@ def build_profile(exchanges: list[dict]) -> dict:
 CSS = """
 :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e0e0e0;
         --card:#fafafa; --code:#f4f4f5; --accent:#7a3fd4; --bar:#c9b3f2; --answer:#0a7b34;
-        --sel:#efe7fb; --warn:#b3261e; --shade:rgba(0,0,0,.35); }
+        --sel:#efe7fb; --warn:#b3261e; --shade:rgba(0,0,0,.35); --mark:#ffe27a; }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#16161a; --fg:#e6e6e6; --muted:#9a9aa5; --line:#2c2c33; --card:#1d1d22;
-          --code:#232329; --accent:#b18cf0; --bar:#4b3a73; --answer:#4ac97e; --sel:#2a2438; --warn:#ff7b72; --shade:rgba(0,0,0,.6); }
+          --code:#232329; --accent:#b18cf0; --bar:#4b3a73; --answer:#4ac97e; --sel:#2a2438; --warn:#ff7b72; --shade:rgba(0,0,0,.6); --mark:#6b5a12; }
 }
 * { box-sizing: border-box; }
 html, body { height:100%; }
@@ -629,6 +629,7 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
 .tl-bar.on { background:var(--accent); }
 .tl-bar.err { background:var(--warn); }
 .tl-bar.gap { margin-left:7px; }
+.tl-bar.miss { opacity:.25; }
 button { font:inherit; padding:.3rem .7rem; border:1px solid var(--line); border-radius:6px;
          background:var(--card); color:var(--fg); cursor:pointer; }
 button:hover { background:var(--code); }
@@ -638,12 +639,18 @@ button.on { background:var(--code); }
 .tree, .pane { overflow:auto; min-height:0; }
 .tree { border-right:1px solid var(--line); }
 .toolbar button { white-space:nowrap; }
-.toolbar { display:flex; gap:.5rem; align-items:center; padding:.5rem .8rem; border-bottom:1px solid var(--line);
+.toolbar { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; padding:.5rem .8rem; border-bottom:1px solid var(--line);
            position:sticky; top:0; background:var(--bg); z-index:1; font-size:12px; color:var(--muted); }
+.toolbar input { flex:1 1 8rem; min-width:6rem; font:inherit; font-size:13px; padding:.25rem .5rem; color:var(--fg);
+                 background:var(--bg); border:1px solid var(--line); border-radius:6px; }
+.toolbar .found { white-space:nowrap; }
+mark { background:var(--mark); color:inherit; border-radius:2px; }
 .row { display:grid; grid-template-columns:1fr 6rem 5rem 3.2rem; align-items:center; gap:.5rem;
        padding:.15rem .8rem .15rem 0; cursor:pointer; border-bottom:1px solid transparent; }
 .row:hover { background:var(--code); }
 .row.sel { background:var(--sel); }
+.row.around .name { color:var(--muted); }
+.note.empty { padding:0 .8rem; }
 .row .lbl { display:flex; align-items:center; gap:.3rem; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .row .caret { width:1rem; color:var(--muted); flex:none; text-align:center; font-size:11px; }
 .row .name { overflow:hidden; text-overflow:ellipsis; }
@@ -713,7 +720,7 @@ JS = r"""
     var requests = data.requests, content = data.content, usage = data.usage || {};
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false };
+    var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '' };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -776,9 +783,11 @@ JS = r"""
         box.appendChild(next);
         var strip = el('div', 'timeline' + (requests.length > 120 ? ' dense' : ''));
         var top = Math.max.apply(null, requests.map(function (r) { return r.info.prompt_in; }).concat([1]));
+        var q = query();
         requests.forEach(function (r, i) {
             var bar = el('div', 'tl-bar' + (i === state.req ? ' on' : '') + (failed(r.info) ? ' err' : '') +
-                         (i && r.info.chain !== requests[i - 1].info.chain ? ' gap' : ''));
+                         (i && r.info.chain !== requests[i - 1].info.chain ? ' gap' : '') +
+                         (q && !search(r, q, {}) ? ' miss' : ''));
             bar.style.height = Math.max(10, 100 * r.info.prompt_in / top) + '%';
             bar.title = 'request ' + (i + 1) + ' \u00b7 ' + n(r.info.prompt_in) + ' tokens \u00b7 ' + r.info.model +
                         ' \u00b7 chain ' + r.info.chain + (failed(r.info) ? ' \u00b7 failed' : '');
@@ -796,12 +805,24 @@ JS = r"""
     function renderTree() {
         var box = $('rows');
         box.innerHTML = '';
-        var r = root();
+        var r = root(), q = query(), hits = null;
+        if (q) {
+            hits = {};
+            search(r, q, hits);
+            var count = Object.keys(hits).filter(function (p) { return hits[p] === 'hit'; }).length;
+            $('found').textContent = count === 1 ? '1 part' : count + ' parts';
+        } else {
+            $('found').textContent = '';
+        }
         var walk = function (item, depth, total, answer, parentSeg) {
-            var row = el('div', 'row' + (item.path === state.path ? ' sel' : '') + (answer ? ' answer' : ''));
+            if (hits && !hits[item.path]) return;
+            // While searching, the parts around a hit are open and dim, so the hits stand out.
+            var open = hits ? hits[item.path] === 'around' : isOpen(item, depth);
+            var row = el('div', 'row' + (item.path === state.path ? ' sel' : '') + (answer ? ' answer' : '') +
+                         (hits && hits[item.path] === 'around' ? ' around' : ''));
             row.style.paddingLeft = (0.4 + depth * 1.1) + 'rem';
             var lbl = el('div', 'lbl');
-            var caret = el('span', 'caret', item.children.length ? (isOpen(item, depth) ? '▾' : '▸') : '');
+            var caret = el('span', 'caret', item.children.length ? (open ? '▾' : '▸') : '');
             caret.onclick = function (ev) { ev.stopPropagation(); state.open[item.path] = !isOpen(item, depth); renderTree(); };
             lbl.appendChild(caret);
             if (item.pick) {
@@ -827,7 +848,7 @@ JS = r"""
             row.appendChild(el('div', 'num', pct(item.tok, total)));
             row.onclick = function () { select(state.req, item.path); };
             box.appendChild(row);
-            if (!item.children.length || !isOpen(item, depth)) return;
+            if (!item.children.length || !open) return;
             var kids = item.children.slice();
             if (state.sortBySize) kids.sort(function (a, b) { return b.tok - a.tok; });
             kids.forEach(function (k) {
@@ -836,6 +857,55 @@ JS = r"""
             });
         };
         walk(r, 0, r.tok, false, undefined);
+        if (!q) return;
+        highlight(box, q);
+        if (!box.childNodes.length) box.appendChild(el('p', 'note empty', 'No part of this request contains \u201c' + state.query.trim() + '\u201d.'));
+    }
+
+    // --- search -----------------------------------------------------------
+    // The search keeps the parts whose name or text contains the query, and the parts around them.
+    // A part is a hit when no part inside it is one, so a message is not counted again for the block
+    // inside it. Each text is lowercased once, and checked once per query.
+    var lower = {}, holds = {}, held = '';
+    function query() { return state.query.trim().toLowerCase(); }
+    function contains(key, q) {
+        if (!key) return false;
+        if (held !== q) { holds = {}; held = q; }
+        if (!(key in holds)) {
+            if (!(key in lower)) lower[key] = content[key].toLowerCase();
+            holds[key] = lower[key].indexOf(q) >= 0;
+        }
+        return holds[key];
+    }
+    function search(item, q, out) {
+        var inside = false;
+        item.children.forEach(function (k) { if (search(k, q, out)) inside = true; });
+        var own = item.label.toLowerCase().indexOf(q) >= 0 || contains(item.text, q) || contains(item.raw, q);
+        if (inside) out[item.path] = 'around'; else if (own) out[item.path] = 'hit';
+        return inside || own;
+    }
+    // Wrap each occurrence in <mark>, splitting the text nodes; the text stays textContent.
+    function highlight(box, q) {
+        var walker = document.createTreeWalker(box, NodeFilter.SHOW_TEXT), nodes = [];
+        while (walker.nextNode()) nodes.push(walker.currentNode);
+        nodes.forEach(function (node) {
+            var text = node.nodeValue, low = text.toLowerCase(), at = low.indexOf(q), from = 0;
+            if (at < 0 || low.length !== text.length) return;
+            var frag = document.createDocumentFragment();
+            while (at >= 0) {
+                frag.appendChild(document.createTextNode(text.slice(from, at)));
+                frag.appendChild(el('mark', '', text.slice(at, at + q.length)));
+                from = at + q.length;
+                at = low.indexOf(q, from);
+            }
+            frag.appendChild(document.createTextNode(text.slice(from)));
+            node.parentNode.replaceChild(frag, node);
+        });
+    }
+    function setQuery(value) {
+        state.query = value;
+        renderPicker(); renderTree(); renderPane();
+        persist();
     }
 
     function crumbs(item) {
@@ -974,6 +1044,7 @@ JS = r"""
         } else if (!item.children.length) {
             pane.appendChild(el('p', 'note', 'No content in the recording.'));
         }
+        if (query()) highlight(pane, query());
     }
 
     // --- readable raw ------------------------------------------------------
@@ -982,7 +1053,7 @@ JS = r"""
     // and long string. Recorded text is untrusted, so every node is built with
     // textContent.
     function jsonView(value, base) {
-        var ratio = root().info.ratio || 4;
+        var ratio = root().info.ratio || 4, q = query();
         // Characters as Python's json.dumps writes them, with a space after
         // ':' and ',', so the numbers match the rest of the page.
         var wire = function (v) {
@@ -995,7 +1066,8 @@ JS = r"""
         var tokens = function (v) { return Math.round(wire(v) / ratio); };
         var isOpen = function (path, depth, v) {
             var o = state.jsonOpen[path];
-            return o === undefined ? depth === 0 || tokens(v) <= 1500 : o;
+            if (o !== undefined) return o;
+            return depth === 0 || tokens(v) <= 1500 || (!!q && JSON.stringify(v).toLowerCase().indexOf(q) >= 0);
         };
         var badge = function (row, v) {
             var t = tokens(v);
@@ -1179,6 +1251,8 @@ JS = r"""
         var parts = state.path.split('/');
         for (var i = 1; i < parts.length; i++) state.open[parts.slice(0, i).join('/')] = true;
         renderPicker(); renderTree(); renderPane();
+        var first = query() && $('pane').querySelector('mark');
+        if (first) first.scrollIntoView({ block: 'center' });
         persist();
     }
 
@@ -1190,7 +1264,7 @@ JS = r"""
         try {
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, atEnd: state.req === requests.length - 1, path: state.path,
-                sortBySize: state.sortBySize, open: state.open, picked: state.picked, dialog: state.dialog, rawView: state.rawView
+                sortBySize: state.sortBySize, open: state.open, picked: state.picked, dialog: state.dialog, rawView: state.rawView, query: state.query
             }));
         } catch (e) { /* no storage: the page still works, it just forgets */ }
     }
@@ -1211,8 +1285,14 @@ JS = r"""
     $('prompt-close').onclick = function () { $('prompt-dialog').close(); };
     $('prompt-dialog').addEventListener('close', function () { state.dialog = false; persist(); });
     $('clear').onclick = function () { state.picked = {}; renderTree(); renderPickBar(); persist(); };
+    $('search').oninput = function () { setQuery($('search').value); };
+    $('search').onkeydown = function (ev) {
+        if (ev.key === 'Escape') { $('search').value = ''; setQuery(''); $('search').blur(); }
+    };
     document.addEventListener('keydown', function (ev) {
         if ($('prompt-dialog').open) return;
+        if (ev.target === $('search')) return;
+        if (ev.key === '/') { ev.preventDefault(); $('search').focus(); return; }
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
     });
@@ -1222,6 +1302,7 @@ JS = r"""
         state.open = saved.open || {};
         state.picked = saved.picked || {};
         state.rawView = !!saved.rawView;
+        state.query = $('search').value = saved.query || '';
         select(saved.atEnd ? requests.length - 1 : Math.min(saved.req || 0, requests.length - 1), saved.path || 'request');
         // A live reload while the dialog is open brings it back.
         if (saved.dialog && picked().length) openPrompt();
@@ -1251,6 +1332,8 @@ def render_page(run_dir: Path, profile: dict) -> str:
       <button id="collapse">collapse</button>
       <button id="copy" title="show a prompt that asks Claude to switch the selected items off">Disable prompt</button>
       <button id="clear">clear</button>
+      <input id="search" type="search" placeholder="search" title="keep the parts that contain this text (/)">
+      <span id="found" class="found"></span>
     </div>
     <div id="rows"></div>
   </div>

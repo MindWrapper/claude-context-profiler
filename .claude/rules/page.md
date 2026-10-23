@@ -49,6 +49,14 @@ call is red, and the selected bar is scrolled into view. Requests are numbered a
 `reader.is_messages_call` takes only the exact `/v1/messages` path, so the `count_tokens` calls
 Claude Code makes (for `/context`, say) are not requests.
 
+## Search
+
+The search box keeps the parts whose label or text (`text` or `raw` in `content`) contains the
+query, with the parts around them opened and dimmed. A part is a hit only when no part inside it is,
+so a message is not counted again for its block. The timeline dims the requests without a hit, and
+`highlight` wraps each occurrence in the tree and the pane in `<mark>`, splitting text nodes, so
+recorded text still goes in as `textContent`.
+
 ## The right pane
 
 A request shows its tokens in the categories `/context` uses (`categories` in `profiler.py`), so a
