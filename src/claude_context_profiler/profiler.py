@@ -1250,11 +1250,17 @@ JS = r"""
             L.push('');
         }
         if (skills.length) {
-            L.push('Switch off these skills: ' + skills.join(', ') + '.');
-            L.push('For a skill of my own, set "skillOverrides": {"NAME": "off"}. A plugin\'s skill goes only with ' +
-                   'its whole plugin: tell me which plugin it belongs to, and ask me before you set ' +
-                   '"NAME@MARKETPLACE": false in "enabledPlugins". If you are not sure an entry switches a skill ' +
-                   'off, tell me instead of guessing.');
+            // The entry depends on where the skill comes from, which only Claude can check on the machine.
+            L.push('Switch off these skills: ' + skills.join(', ') + '. Use the entry that fits where each one comes from:');
+            L.push('- A skill bundled with Claude Code, or one in ~/.claude/skills/ or a project\'s .claude/skills/: ' +
+                   'set "skillOverrides": {"NAME": "off"}. This works for bundled skills too.');
+            L.push('- A plugin\'s skill (listed as PLUGIN:NAME): skillOverrides does not reach it, it goes only with its ' +
+                   'whole plugin. Tell me which plugin it is, and ask me before you set "PLUGIN@MARKETPLACE": false ' +
+                   'in "enabledPlugins".');
+            L.push('- A skill synced from claude.ai (under ~/.claude/skills/synced/): tell me to switch it off in my ' +
+                   'claude.ai skill settings. "syncClaudeAiSkills": false would stop every synced skill, so ask me ' +
+                   'before you set that.');
+            L.push('The rules are in https://code.claude.com/docs/en/skills#override-skill-visibility-from-settings.');
             L.push('');
         }
         // deniedMcpServers keeps Claude Code from connecting to the server at all, so its tools and

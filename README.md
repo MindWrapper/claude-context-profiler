@@ -54,7 +54,9 @@ Claude, with your approval. These are the entries it uses, if you prefer to edit
 | an MCP server                     | `{"serverName": "NAME"}` to `deniedMcpServers`              |
 | a subagent type                   | `Agent(NAME)` to `permissions.deny`                         |
 | a plugin                          | `"NAME@MARKETPLACE": false` in `enabledPlugins`             |
-| a skill                           | `"NAME": "off"` in `skillOverrides`                         |
+| a skill, bundled or your own      | `"NAME": "off"` in `skillOverrides`                         |
+| a plugin's skill                  | its whole plugin, as above                                  |
+| a skill synced from claude.ai     | switch it off in claude.ai's skill settings                 |
 
 `permissions.deny` is the easiest to undo: remove an entry mid-session and the tool is back on the
 next request, without breaking the prompt cache. For the Artifact tool, deny `Artifact` rather than

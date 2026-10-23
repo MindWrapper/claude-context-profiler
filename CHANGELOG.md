@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- The Disable prompt tells Claude which entry switches off a skill, by where it comes from:
+  `skillOverrides` for a skill bundled with Claude Code or your own, the whole plugin for a plugin's
+  skill, and claude.ai's settings for a synced one. Claude used to stop at a bundled skill.
 - MCP tools are grouped under their server, which carries the only checkbox: a server is switched
   off as a whole. One MCP tool costs a few tokens as a deferred name, and denying it left the server
   connected. A server that sends no instructions can now be ticked too.
