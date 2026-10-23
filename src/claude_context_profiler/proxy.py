@@ -27,6 +27,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from .loopback import LoopbackServer
+
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 DEFAULT_PORT = 8788
 CHUNK = 16384
@@ -285,7 +287,7 @@ def main() -> int:
         run_dir = Path(args.run)
         run_dir.mkdir(parents=True, exist_ok=True)
         config = Config(args.upstream, Recorder(run_dir), args.timeout)
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = LoopbackServer(("127.0.0.1", args.port), Handler)
     except OSError as error:
         print(f"proxy: cannot start: {error}", file=sys.stderr)
         return 1

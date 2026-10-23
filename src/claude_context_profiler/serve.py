@@ -34,6 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import profiler
+from .loopback import LoopbackServer
 from .reader import esc
 
 DEFAULT_PORT = 8790
@@ -196,7 +197,7 @@ def main() -> int:
         return 1
 
     try:
-        server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+        server = LoopbackServer(("127.0.0.1", args.port), Handler)
     except OSError as error:
         print(f"viewer: cannot start: {error}", file=sys.stderr)
         return 1

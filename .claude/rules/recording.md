@@ -4,6 +4,7 @@ paths:
   - "src/claude_context_profiler/proxy.py"
   - "src/claude_context_profiler/serve.py"
   - "src/claude_context_profiler/reader.py"
+  - "src/claude_context_profiler/loopback.py"
   - "tests/test_proxy.py"
   - "tests/test_launcher.py"
   - "tests/test_serve.py"
@@ -39,6 +40,8 @@ PROJECT is the basename of the directory the command started in; STAMP is `YYYYM
 - **viewer** (`serve.py`) serves the page and rebuilds it when a call lands. It is a separate
   process from the proxy, so a slow or broken renderer never touches the session.
 - **reader** (`reader.py`) loads a run directory and pairs each request with its response.
+- **loopback** (`loopback.py`) is the HTTP server the proxy and the viewer run on. It skips the
+  reverse DNS lookup the standard `HTTPServer` does when it binds, which hangs on some machines.
 
 ## Recording is best effort
 

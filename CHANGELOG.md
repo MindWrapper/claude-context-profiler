@@ -8,6 +8,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 - The launcher waits up to 30s for the recorder to start, not 10s: a fresh machine scans Python on
   its first start. When a session is not recorded, it says so again after Claude exits.
+- The proxy and the page start without a reverse DNS lookup of 127.0.0.1, which hung for half a
+  minute or more on some machines and kept the page from ever opening.
 - The page drops its title, totals and footnote, and sorts each request by size from the start.
 - The page shows tokens only, no character counts.
 - The right pane shows each part's JSON as a readable tree: long strings as formatted text, Markdown
