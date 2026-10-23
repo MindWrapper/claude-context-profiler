@@ -272,6 +272,12 @@ def add_listings(item: dict, text: str, path: list[str], store: "Store", servers
                 listing["children"].append(child)
             item["children"].append(listing)
         i = max(end, i + 1)
+    # A text with several listings is named after all of them, largest first, not after the first
+    # one it was recognized by, so that none hides behind another's name.
+    listings = [child for child in item["children"] if child["kind"] == "listing"]
+    if len(listings) > 1:
+        names = [child["label"].split(" (")[0] for child in sorted(listings, key=lambda c: -c["chars"])]
+        item["label"] = shorten("listings: " + ", ".join(names))
 
 
 # --- the tree --------------------------------------------------------------

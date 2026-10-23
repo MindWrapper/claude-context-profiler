@@ -35,7 +35,8 @@ puts into the prompt (skills, subagent types, deferred tools, MCP server instruc
 one node per item by `LISTINGS`; each tool and listed item carries a `pick`, which the page shows as
 a checkbox. In the MCP server instructions, a `## ` heading starts a server only when it names one
 of the request's `mcp__SERVER__` tools (`server_key`), because a server's own text can have `## `
-headings too; a listing ends at the next listing's header line. The module is named `profiler.py`
+headings too; a listing ends at the next listing's header line. A text with several listings is
+named after all of them, so none hides behind another's name. The module is named `profiler.py`
 because `profile.py` would shadow the standard library's `profile` module.
 
 ## The timeline
