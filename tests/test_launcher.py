@@ -26,14 +26,17 @@ WINDOWS = os.name == "nt"
 FAKE_CLAUDE = r'''
 import glob, json, os, re, subprocess, sys, time, urllib.request
 
-# Run the SessionStart hook from --settings the way claude does: through the shell, JSON on stdin.
+# Run the SessionStart hook from --settings the way claude does: in bash (Git Bash on Windows),
+# with JSON on stdin.
+GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
+bash = GIT_BASH if os.path.exists(GIT_BASH) else "bash"
 greeting = None
 if "--settings" in sys.argv:
     settings = json.load(open(sys.argv[sys.argv.index("--settings") + 1], encoding="utf-8"))
     for group in settings["hooks"]["SessionStart"]:
         for hook in group["hooks"]:
-            out = subprocess.run(hook["command"], shell=True, input="{}", capture_output=True, text=True)
-            greeting = json.loads(out.stdout)["systemMessage"]
+            out = subprocess.run([bash, "-c", hook["command"]], input="{}", capture_output=True, text=True)
+            greeting = json.loads(out.stdout)["systemMessage"] if out.returncode == 0 else "hook failed: " + out.stderr
 
 base = os.environ["ANTHROPIC_BASE_URL"]
 body = {

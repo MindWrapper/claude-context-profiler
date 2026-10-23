@@ -240,8 +240,10 @@ def with_page_address(command: list[str], recording: Recording) -> list[str]:
     """
     if recording.page_url is None or recording.run_dir is None or "--settings" in command[1:]:
         return command
-    python = f'"{sys.executable}"' if " " in sys.executable else sys.executable
-    hook = {"type": "command", "command": f"{python} -m claude_context_profiler.hook {recording.page_url}"}
+    # Claude Code runs hooks in bash, Git Bash on Windows, where a backslash is an escape: quote the
+    # path and write it with forward slashes, which Windows accepts too.
+    python = sys.executable.replace("\\", "/")
+    hook = {"type": "command", "command": f'"{python}" -m claude_context_profiler.hook {recording.page_url}'}
     path = recording.run_dir / "claude-settings.json"
     path.write_text(json.dumps({"hooks": {"SessionStart": [{"hooks": [hook]}]}}, indent=2) + "\n", encoding="utf-8")
     return [command[0], "--settings", str(path), *command[1:]]
