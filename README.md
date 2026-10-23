@@ -32,6 +32,36 @@ tick it and press **Disable prompt**. A dialog shows the prompt; press **Copy** 
 Claude, which shows you the change to `~/.claude/settings.json` and asks before it writes. When you
 quit Claude, the recording stops and the page is saved.
 
+## Your data stays local
+
+- The profiler adds no server, account or telemetry. Claude's requests go to the same API as always.
+- The recorder and the page listen on `127.0.0.1` only. The page loads nothing from the internet.
+- Your API key and sign-in token are never saved; the recording blanks them out. Extra headers you
+  add with `ANTHROPIC_CUSTOM_HEADERS` are saved as they are.
+- Recordings hold your prompts and the files Claude read. They live in
+  `~/.claude-context-profiler/recordings/`; delete them any time.
+
+## Switching things off
+
+The profiler never changes your config itself; the **Disable prompt** button hands that to
+Claude, with your approval. These are the entries it uses, if you prefer to edit
+`~/.claude/settings.json` by hand:
+
+| To switch off                     | Add                                                         |
+|-----------------------------------|-------------------------------------------------------------|
+| a tool, e.g. `WebFetch`           | its name to `permissions.deny`                              |
+| an MCP server or one of its tools | `mcp__SERVER` or `mcp__SERVER__TOOL` to `permissions.deny`  |
+| a subagent type                   | `Agent(NAME)` to `permissions.deny`                         |
+| a plugin                          | `"NAME@MARKETPLACE": false` in `enabledPlugins`             |
+| a skill                           | `"NAME": "off"` in `skillOverrides`                         |
+
+`permissions.deny` is the easiest to undo: remove an entry mid-session and the tool is back on the
+next request, without breaking the prompt cache. For the Artifact tool, deny `Artifact` rather than
+setting `enableArtifact: false`, which no other settings file can turn back on. See the
+[settings docs](https://code.claude.com/docs/en/settings).
+
+## Options and updates
+
 - Options are forwarded to `claude`: `ccprof --continue` runs `claude --continue`
   with recording on.
 - To try it without installing, `uvx` downloads and runs it in one go:
@@ -80,34 +110,6 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 When you are done, quit `claude` and press Ctrl-C in the other two terminals. The page is written
 to `~/context-profile/context_profiler.html`. Use a new folder for each session; sessions that share
 a folder are mixed together.
-
-## Your data stays local
-
-- The profiler adds no server, account or telemetry. Claude's requests go to the same API as always.
-- The recorder and the page listen on `127.0.0.1` only. The page loads nothing from the internet.
-- Your API key and sign-in token are never saved; the recording blanks them out. Extra headers you
-  add with `ANTHROPIC_CUSTOM_HEADERS` are saved as they are.
-- Recordings hold your prompts and the files Claude read. They live in
-  `~/.claude-context-profiler/recordings/`; delete them any time.
-
-## Switching things off
-
-The profiler never changes your config itself; the **Disable prompt** button hands that to
-Claude, with your approval. These are the entries it uses, if you prefer to edit
-`~/.claude/settings.json` by hand:
-
-| To switch off                     | Add                                                         |
-|-----------------------------------|-------------------------------------------------------------|
-| a tool, e.g. `WebFetch`           | its name to `permissions.deny`                              |
-| an MCP server or one of its tools | `mcp__SERVER` or `mcp__SERVER__TOOL` to `permissions.deny`  |
-| a subagent type                   | `Agent(NAME)` to `permissions.deny`                         |
-| a plugin                          | `"NAME@MARKETPLACE": false` in `enabledPlugins`             |
-| a skill                           | `"NAME": "off"` in `skillOverrides`                         |
-
-`permissions.deny` is the easiest to undo: remove an entry mid-session and the tool is back on the
-next request, without breaking the prompt cache. For the Artifact tool, deny `Artifact` rather than
-setting `enableArtifact: false`, which no other settings file can turn back on. See the
-[settings docs](https://code.claude.com/docs/en/settings).
 
 ## Limits
 
