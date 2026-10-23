@@ -423,7 +423,7 @@ def chars_per_token(exchanges: list[dict], position: int) -> tuple[float, str]:
         tokens = exchanges[i]["row"]["prompt_in"]
         if tokens > 0:
             ratio = wire_size(exchanges[i]["body"]) / tokens
-            return ratio, "measured" if i == position else f"from request {exchanges[i]['record']['index']}"
+            return ratio, "measured" if i == position else f"from request {i + 1}"
     return FALLBACK_CHARS_PER_TOKEN, "fallback"
 
 
@@ -431,7 +431,8 @@ def request_tree(exchanges: list[dict], position: int, store: Store) -> dict:
     exchange = exchanges[position]
     body = exchange["body"]
     record = exchange["record"]
-    root = node(f"request {record['index']}", "request", wire_size(body), ["request"], store)
+    # Numbered among the requests, not among all calls: token counts and other calls are left out.
+    root = node(f"request {position + 1}", "request", wire_size(body), ["request"], store)
     parts = [
         system_tree(system_blocks(body), store),
         tools_tree(body.get("tools") or [], store),

@@ -6,6 +6,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- Token-counting calls (`/v1/messages/count_tokens`, which `/context` makes) are no longer listed as
+  requests, and requests are numbered among themselves.
 - The browser no longer opens by default: the page's address is on Claude's start screen.
   `CLAUDE_CONTEXT_PROFILER_OPEN=1` opens it at the first API call, as before.
 - Claude's start screen shows the address of the live page in a box, as a link, so it can be found

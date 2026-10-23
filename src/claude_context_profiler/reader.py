@@ -31,7 +31,10 @@ def load_run(run_dir: Path) -> list[dict]:
 
 
 def is_messages_call(record: dict) -> bool:
-    return record.get("method") == "POST" and record.get("path", "").startswith(MESSAGES_PATH) and "request_json" in record
+    """A request to the model. The exact path, so /v1/messages/count_tokens, which Claude Code calls
+    to count tokens (for /context, say), is not one."""
+    path = record.get("path", "").split("?", 1)[0]
+    return record.get("method") == "POST" and path == MESSAGES_PATH and "request_json" in record
 
 
 def parse_sse(text: str) -> list[dict]:
