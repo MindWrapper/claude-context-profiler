@@ -1,5 +1,6 @@
 """Take docs/screenshot.png from a recording: the first request's tools, sorted by size, with the
-three largest ticked and the Artifact tool selected, so the right pane shows its text.
+three largest that are sensible to switch off ticked and the Artifact tool selected, so the right
+pane shows its text.
 Usage: python3 shot.py RUN_DIR OUT.png
 """
 
@@ -20,6 +21,9 @@ CHROMES = [
     "chromium",
     "chromium-browser",
 ]
+
+# Tools Claude Code works with all the time. The screenshot must not suggest switching them off.
+CORE = {"Agent", "Task", "Bash", "Read", "Edit", "Write", "Glob", "Grep", "ToolSearch", "Skill", "TodoWrite"}
 
 
 def find_chrome() -> str:
@@ -50,7 +54,7 @@ def main() -> int:
     state = {
         "req": 0, "atEnd": False, "path": f"tools/{shown}", "sortBySize": True,
         "open": {"request": True, "tools": True},
-        "picked": {f"tool: {name}": True for name in tools[:3]},
+        "picked": {f"tool: {name}": True for name in [name for name in tools if name not in CORE][:3]},
     }
     seed = "<script>sessionStorage.setItem(%s, %s);</script>" % (
         json.dumps("profile:" + title), json.dumps(json.dumps(state)))

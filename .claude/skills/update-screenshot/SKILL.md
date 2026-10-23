@@ -18,9 +18,9 @@ empty folder: `/tmp/demo`.
      -p "What does this directory contain? Answer in one line." < /dev/null
    ```
 
-2. Take the screenshot. It opens the first request's tools, sorted by size, ticks the three largest,
-   and selects the Artifact tool (the largest tool, if there is none), so the right pane shows its
-   text:
+2. Take the screenshot. It opens the first request's tools, sorted by size, ticks the three largest
+   that are sensible to switch off (never a core tool such as Agent or Bash), and selects the
+   Artifact tool (the largest tool, if there is none), so the right pane shows its text:
 
    ```bash
    python3 $REPO/.claude/skills/update-screenshot/shot.py /tmp/demo/home/recordings/my-project/* \
@@ -28,6 +28,6 @@ empty folder: `/tmp/demo`.
    ```
 
 3. Look at `docs/screenshot.png`. Done when it shows the tools tree with three ticked items,
-   **Disable prompt (3)**, the Artifact tool's text in the right pane, and nothing personal: no email,
+   none of them a core tool such as Agent, **Disable prompt (3)**, the Artifact tool's text in the right pane, and nothing personal: no email,
    no home path, no user name.
 4. Delete `/tmp/demo`, and show the screenshot to the owner before committing it.
