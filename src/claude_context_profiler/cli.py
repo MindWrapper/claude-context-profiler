@@ -23,7 +23,9 @@ from . import profiler
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 # These send the requests to another cloud and ignore ANTHROPIC_BASE_URL.
 OTHER_CLOUDS = ("CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY")
-START_TIMEOUT = 10.0
+# A fresh machine scans Python on its first start (Gatekeeper, Windows Defender), which can take
+# more than 10s. A child that fails exits at once, so the long wait only applies when it is slow.
+START_TIMEOUT = 30.0
 WINDOWS = os.name == "nt"
 
 
@@ -70,7 +72,9 @@ def wait_for_port(child: subprocess.Popen, log: Path, pattern: str, what: str) -
             lines = text.strip().splitlines()
             raise SetupError(f"the {what} did not start: {lines[-1] if lines else 'no output'}")
         time.sleep(0.05)
-    raise SetupError(f"the {what} did not start within {START_TIMEOUT:.0f}s, see {log}")
+    # The run directory, and the log with it, is removed after this, so its last line goes in the message.
+    lines = log.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    raise SetupError(f"the {what} did not start within {START_TIMEOUT:.0f}s" + (f": {lines[-1]}" if lines else ""))
 
 
 def stop_child(child: subprocess.Popen | None, timeout: float) -> None:
@@ -225,11 +229,19 @@ class Recording:
         say(f"page: {page}")
 
 
+def run_unrecorded(command: list[str], env: dict[str, str], reason: str) -> int:
+    """Run claude without recording. The reason is said again when claude exits, because claude
+    takes over the terminal and the first line easily goes unseen."""
+    say(f"{reason}; running claude without recording")
+    code = run_claude(command, env)
+    say(f"this session was not recorded: {reason}")
+    return code
+
+
 def record_session(command: list[str], env: dict[str, str]) -> int:
     cloud = other_cloud()
     if cloud:
-        say(f"{cloud} is set, so the requests bypass any base URL; running claude without recording")
-        return run_claude(command, env)
+        return run_unrecorded(command, env, f"{cloud} is set, so the requests bypass any base URL")
 
     upstream = os.environ.get("ANTHROPIC_BASE_URL") or DEFAULT_UPSTREAM
     recording = Recording()
@@ -238,8 +250,7 @@ def record_session(command: list[str], env: dict[str, str]) -> int:
     except SetupError as error:
         recording.stop()
         recording.discard()
-        say(f"{error}; running claude without recording")
-        return run_claude(command, env)
+        return run_unrecorded(command, env, str(error))
     except BaseException:
         recording.stop()
         recording.discard()
