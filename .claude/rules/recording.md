@@ -5,6 +5,7 @@ paths:
   - "src/claude_context_profiler/serve.py"
   - "src/claude_context_profiler/reader.py"
   - "tests/test_proxy.py"
+  - "tests/test_launcher.py"
   - "tests/test_serve.py"
 ---
 
@@ -48,6 +49,10 @@ why, removes the run directory, and runs `claude` without recording. If only the
 the recording goes on without the live page, and the launcher builds the page when `claude` exits.
 
 ## Check a change here
+
+`tests/test_launcher.py` runs the whole launcher end to end: a fake `claude` on the PATH sends a
+request through the real proxy to a fake API, checks the live page, and a fake browser (the `BROWSER`
+variable) records the address the viewer opens. CI runs it on Linux, macOS and Windows.
 
 After the tests pass, record a real one-line session from an empty temporary folder and look at
 what it wrote:
