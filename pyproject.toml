@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-context-profiler"
+dynamic = ["version"]
+description = "See exactly what fills Claude Code's context, recorded and shown on your machine"
+license = "MIT"
+license-files = ["LICENSE"]
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Yan Drugalya" }]
+dependencies = []
+keywords = ["claude", "claude-code", "context", "profiler", "llm", "tokens"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Software Development :: Debuggers",
+]
+
+[project.urls]
+Homepage = "https://github.com/MindWrapper/claude-context-profiler"
+Issues = "https://github.com/MindWrapper/claude-context-profiler/issues"
+Changelog = "https://github.com/MindWrapper/claude-context-profiler/blob/main/CHANGELOG.md"
+
+[project.scripts]
+claude-context-profiler = "claude_context_profiler.cli:main"
+ccprof = "claude_context_profiler.cli:main"
+
+# The version lives in one place: __version__ in the package.
+[tool.hatch.version]
+path = "src/claude_context_profiler/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_context_profiler"]
