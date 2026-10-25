@@ -981,6 +981,8 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
 .picker { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; padding:.5rem 9rem .5rem 1.5rem; border-bottom:1px solid var(--line); }
 .picker .step { font:16px/1 ui-monospace, monospace; padding:.1rem .55rem; }
 .tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; min-width:16rem; text-align:center; }
+.where { display:flex; gap:.5rem; align-items:baseline; font:600 13px ui-monospace, monospace; white-space:nowrap; margin-right:.6rem; }
+.where .branch { font-weight:400; color:var(--muted); }
 .legend { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.9rem; font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
 .charts { display:flex; max-height:40vh; overflow-y:auto; border-bottom:1px solid var(--line); background:var(--card); }
 .lane-names { flex:none; width:clamp(9rem, 22vw, 16rem); display:flex; flex-direction:column; gap:3px; padding:6px 0; border-right:1px solid var(--line); }
@@ -1213,6 +1215,13 @@ JS = r"""
         var box = $('picker');
         var barFocused = document.activeElement && document.activeElement.className.indexOf('tl-bar') === 0;
         box.innerHTML = '';
+        // Which session this is: the folder Claude ran in and its branch.
+        if (data.project) {
+            var at = el('span', 'where', data.project.split(/[\\/]/).filter(Boolean).pop() || data.project);
+            if (data.branch) at.appendChild(el('span', 'branch', '\u2387 ' + data.branch));
+            at.title = data.project + (data.branch ? ' \u00b7 branch ' + data.branch : '');
+            box.appendChild(at);
+        }
         var info = root().info, own = chainOf(root());
         var prev = el('button', 'step', '\u2039'), next = el('button', 'step', '\u203a');
         prev.title = 'previous request (\u2190)'; next.title = 'next request (\u2192)';
@@ -1578,7 +1587,7 @@ JS = r"""
     // The session ID and the recording's folder, to paste into a terminal or a bug report.
     function ids(info) {
         var box = el('div', 'ids');
-        [['session', info.session], ['folder', data.run_dir]].forEach(function (pair) {
+        [['session', info.session], ['project', data.project], ['recording', data.run_dir]].forEach(function (pair) {
             if (!pair[1]) return;
             var b = el('button', '', 'copy');
             b.onclick = function () {
@@ -2061,6 +2070,15 @@ def node_table(requests: list[dict]) -> tuple[list[dict], list[int]]:
     return nodes, [visit(request) for request in requests]
 
 
+def where(profile: dict) -> str:
+    """The folder and branch for the browser tab's title, first, so tabs of different sessions tell
+    apart."""
+    if not profile.get("project"):
+        return ""
+    name = Path(profile["project"]).name or profile["project"]
+    return f"{name} ({profile['branch']}) \u00b7 " if profile.get("branch") else f"{name} \u00b7 "
+
+
 def render_page(run_dir: Path, profile: dict) -> str:
     nodes, roots = node_table(profile["requests"])
     profile = dict(profile, nodes=nodes, requests=roots)
@@ -2070,7 +2088,7 @@ def render_page(run_dir: Path, profile: dict) -> str:
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>context profile {esc(run_dir.name)}</title>
+<title>{esc(where(profile))}context profile {esc(run_dir.name)}</title>
 <style>{CSS}</style></head>
 <body>
 <div class="picker" id="picker" title="&larr; &rarr; switch request"></div>
@@ -2118,6 +2136,13 @@ def render_run(run_dir: Path) -> str:
     run_dir = run_dir.resolve()
     profile = build_profile(exchanges)
     profile["run_dir"] = str(run_dir)
+    # The folder Claude ran in and its branch, as the launcher found them when the session started.
+    try:
+        meta = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        meta = {}
+    profile["project"] = meta.get("project") if isinstance(meta, dict) else None
+    profile["branch"] = meta.get("branch") if isinstance(meta, dict) else None
     return render_page(run_dir, profile)
 
 

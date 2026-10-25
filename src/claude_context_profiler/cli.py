@@ -150,6 +150,28 @@ def other_cloud() -> str | None:
     return None
 
 
+def git_branch(folder: Path) -> str | None:
+    """The branch checked out in the repository that holds folder, or the commit when no branch is,
+    read from HEAD without running git. None outside a repository."""
+    try:
+        for parent in [folder, *folder.parents]:
+            dot = parent / ".git"
+            if dot.is_file():  # a worktree or a submodule: "gitdir: PATH"
+                line = dot.read_text(encoding="utf-8").strip()
+                git_dir = parent / line[len("gitdir:"):].strip() if line.startswith("gitdir:") else None
+            elif dot.is_dir():
+                git_dir = dot
+            else:
+                continue
+            head = (git_dir / "HEAD").read_text(encoding="utf-8").strip() if git_dir else ""
+            if head.startswith("ref: refs/heads/"):
+                return head[len("ref: refs/heads/"):]
+            return head[:7] or None
+    except OSError:
+        return None
+    return None
+
+
 def make_run_dir(home: Path) -> Path:
     parent = home / "recordings" / Path.cwd().name
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -179,6 +201,7 @@ class Recording:
             self.run_dir = make_run_dir(home)
             meta = {
                 "project": str(Path.cwd().absolute()),
+                "branch": git_branch(Path.cwd().absolute()),
                 "upstream": upstream,
                 "started": datetime.now().astimezone().isoformat(timespec="seconds"),
             }

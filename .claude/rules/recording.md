@@ -18,7 +18,8 @@ paths:
 ```
 $CLAUDE_CONTEXT_PROFILER_HOME/recordings/PROJECT/STAMP/   one recording
     0001.json, 0002.json ...   one API call each, written by the proxy
-    run.json                   written by the launcher before it starts the proxy
+    run.json                   written by the launcher before it starts the proxy: the folder
+                               Claude runs in, its git branch (read from HEAD), the start time
     claude-settings.json       the SessionStart hook that shows the page's address in claude
     proxy.log, viewer.log      the output of the two child processes
     context_profiler.html      written when the session ends

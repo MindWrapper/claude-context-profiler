@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- The page shows the folder Claude ran in and its git branch, at the top and first in the browser
+  tab's title, so a page tells which session it belongs to. The request pane can copy the folder's
+  path.
 - A **Session** tab next to the parts tree shows the session as Claude Code does: your prompts,
   Claude's replies and tool calls with the first line of each result, and each subagent's steps
   under the Agent call that started it. A step selects the part of the request it came from.
