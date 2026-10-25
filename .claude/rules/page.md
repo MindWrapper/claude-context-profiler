@@ -53,9 +53,17 @@ because `profile.py` would shadow the standard library's `profile` module.
 
 ## The timeline
 
-The strip at the top has one bar per request, its height the prompt's tokens, so a session of any
-length stays one row and shows how the context grew. A gap starts a new conversation chain, a failed
-call is red, and the selected bar is scrolled into view. Each bar is split by the API's own counts:
+The top of the page is laid out like a profiler's charts: a toolbar that steps through the requests
+with a legend of the bar colors, then one row per chain (`chain_links`), named in a column on the
+left as a tree: the main conversation on top, each subagent under the chain that started it, side
+calls (a chain without tools) at the bottom. A subagent is matched to its Agent call by the prompt,
+which its first message holds. Each request is one bar, its height the prompt's tokens on one scale
+for all rows, so the rows show how each context grew; a row is as tall as its tallest bar, and the
+selected request is lit down every row. The requests linked to it are tinted: for a subagent's
+request, the request that started the subagent and the one whose new messages carry its result; for
+a request that started subagents, their first requests and those results. The Agent call's nodes
+carry the call id (`call`), so the tree and the pane link the two ways. A gap starts a new main conversation,
+a failed call is red, and the selected bar is scrolled into view. Each bar is split by the API's own counts:
 fresh and cache writes on top, cache reads below; the request pane's facts carry the same colors as
 a legend.
 

@@ -418,6 +418,19 @@ def block_label(block: dict, tool_names: dict[str, str]) -> str:
     return kind
 
 
+AGENT_TOOLS = ("Agent", "Task")
+
+
+def agent_call(block: dict, tool_names: dict[str, str]) -> str | None:
+    """The call id of a block that starts a subagent or carries its result, so the page can link it
+    to the subagent's requests."""
+    if block.get("type") == "tool_use" and block.get("name") in AGENT_TOOLS:
+        return block.get("id")
+    if block.get("type") == "tool_result" and tool_names.get(block.get("tool_use_id", "")) in AGENT_TOOLS:
+        return block.get("tool_use_id")
+    return None
+
+
 def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str], servers: dict[str, str]) -> dict:
     role = message.get("role", "?")
     content = message.get("content")
@@ -433,6 +446,9 @@ def message_node(i: int, message: dict, store: Store, tool_names: dict[str, str]
         label = block_label(block, tool_names)
         kind = block.get("type", "?")
         child = node(label, kind, wire_size(block), path + [str(j)], store, text=block_text(block), raw=block, bp=has_breakpoint(block))
+        call = agent_call(block, tool_names)
+        if call:
+            child["call"] = call
         if kind == "text":
             add_listings(child, block.get("text", ""), path + [str(j)], store, servers)
         item["children"].append(child)
@@ -467,7 +483,11 @@ def answer_tree(answer: dict, store: Store) -> dict:
     for j, block in enumerate(blocks):
         kind = block.get("type", "?")
         label = block_label(block, tool_names)
-        root["children"].append(node(label, kind, wire_size(block), ["answer", str(j)], store, text=block_text(block), raw=block))
+        child = node(label, kind, wire_size(block), ["answer", str(j)], store, text=block_text(block), raw=block)
+        call = agent_call(block, tool_names)
+        if call:
+            child["call"] = call
+        root["children"].append(child)
     if answer.get("error"):
         root["children"].append(node("error", "error", 0, ["answer", "error"], store, text=pretty(answer["error"])))
     return root
@@ -702,7 +722,7 @@ def session_usage(exchanges: list[dict]) -> dict:
             count(f"MCP server: {name.split('__')[1]}")
         elif name == "Skill" and args.get("skill"):
             count(f"skill: {args['skill']}")
-        elif name in ("Agent", "Task") and args.get("subagent_type"):
+        elif name in AGENT_TOOLS and args.get("subagent_type"):
             count(f"subagent: {args['subagent_type']}")
         elif name == "ToolSearch" and str(args.get("query", "")).startswith("select:"):
             for loaded in str(args["query"])[len("select:") :].split(","):
@@ -712,13 +732,86 @@ def session_usage(exchanges: list[dict]) -> dict:
     return usage
 
 
+def tool_input(block: dict) -> dict:
+    """A tool call's input. A streamed answer holds it as the JSON text that arrived."""
+    if block.get("input"):
+        return block["input"]
+    try:
+        parsed = json.loads(block.get("partial_json") or "{}")
+    except ValueError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def first_text(exchange: dict) -> str:
+    messages = exchange["messages"]
+    content = messages[0].get("content") if messages else ""
+    return content if isinstance(content, str) else "\n".join(block_text(block) for block in content or [])
+
+
+def chain_links(exchanges: list[dict]) -> list[dict]:
+    """One entry per conversation chain, by chain number: its kind, its lane on the timeline and, for a
+    subagent, the request whose answer started it and the one that got its result back.
+
+    A subagent's first message holds the prompt its Agent call gave it, which is how the two are
+    matched. A chain without tools is a side call: the quota probe, a title. The rest are the main
+    conversation, which starts over after a compaction or /clear."""
+    chains: dict[int, dict] = {}
+    for i, exchange in enumerate(exchanges):
+        chain = chains.setdefault(exchange["chain"], {
+            "chain": exchange["chain"], "first": i, "requests": 0, "kind": "main" if exchange["tools"] else "side"})
+        chain["last"] = i
+        chain["requests"] += 1
+    for position, exchange in enumerate(exchanges):
+        for block in exchange["answer"]["blocks"]:
+            if block.get("type") != "tool_use" or block.get("name") not in AGENT_TOOLS:
+                continue
+            args = tool_input(block)
+            prompt = str(args.get("prompt") or "").strip()
+            for chain in chains.values():
+                if chain["kind"] == "main" and chain["first"] > position and prompt and prompt in first_text(exchanges[chain["first"]]):
+                    chain.update(kind="agent", spawn=position, call=block.get("id", ""),
+                                 agent=args.get("subagent_type") or "general-purpose", task=args.get("description") or "")
+                    break
+    for chain in chains.values():
+        if chain["kind"] != "agent":
+            continue
+        # The result comes back in a tool result, or later in a notification for an agent that ran
+        # in the background: the first request of the parent chain after the subagent's last one
+        # whose new messages name the call.
+        parent = exchanges[chain["spawn"]]["chain"]
+        chain["back"] = next((p for p in range(chain["last"] + 1, len(exchanges)) if exchanges[p]["chain"] == parent
+                              and chain["call"] in json.dumps(exchanges[p]["messages"][exchanges[p]["kept"]:])), None)
+    # One lane per chain, in the order of a tree: the main conversation on top, each subagent under
+    # the chain that started it, side calls at the bottom.
+    order: list[dict] = []
+
+    def place(chain: dict, depth: int, lane: int | None = None) -> None:
+        if lane is None:
+            lane = len(order)
+            order.append(chain)
+        chain["lane"], chain["depth"] = lane, depth
+        for child in chains.values():
+            if child["kind"] == "agent" and exchanges[child["spawn"]]["chain"] == chain["chain"]:
+                place(child, depth + 1)
+
+    # The main conversation keeps one lane when it starts over; a gap marks where.
+    for i, chain in enumerate(c for c in chains.values() if c["kind"] == "main"):
+        place(chain, 0, 0 if i else None)
+    lanes = len(order)
+    for chain in chains.values():
+        if chain["kind"] == "side":
+            chain["lane"], chain["depth"] = lanes, 0
+    return [chains[number] for number in sorted(chains)]
+
+
 def build_profile(exchanges: list[dict]) -> dict:
     store = Store()
     names = server_names(exchanges)
     chains: dict = {}
     requests = [request_tree(exchanges, i, store, names, chains) for i in range(len(exchanges))]
     return {"requests": requests, "content": store.items, "usage": session_usage(exchanges),
-            "servers": sorted(names.values())}
+            "servers": sorted(names.values()), "chains": chain_links(exchanges)}
 
 
 # --- the page --------------------------------------------------------------
@@ -727,23 +820,38 @@ CSS = """
 :root { color-scheme: light dark; --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#e0e0e0;
         --card:#fafafa; --code:#f4f4f5; --accent:#7a3fd4; --bar:#c9b3f2; --answer:#0a7b34;
         --sel:#efe7fb; --warn:#b3261e; --shade:rgba(0,0,0,.35); --mark:#ffe27a;
-        --write:#e8962e; --fresh:#2f80c8; }
+        --write:#e8962e; --fresh:#2f80c8; --link:rgba(47,128,200,.16); }
 @media (prefers-color-scheme: dark) {
   :root { --bg:#16161a; --fg:#e6e6e6; --muted:#9a9aa5; --line:#2c2c33; --card:#1d1d22;
           --code:#232329; --accent:#b18cf0; --bar:#4b3a73; --answer:#4ac97e; --sel:#2a2438; --warn:#ff7b72; --shade:rgba(0,0,0,.6); --mark:#6b5a12;
-          --write:#c47e22; --fresh:#4a9be0; }
+          --write:#c47e22; --fresh:#4a9be0; --link:rgba(74,155,224,.2); }
 }
 * { box-sizing: border-box; }
 html, body { height:100%; }
 body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direction:column;
        font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-.picker { display:flex; gap:.6rem; align-items:center; padding:.5rem 9rem .5rem 1.5rem; border-bottom:1px solid var(--line); }
+.picker { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; padding:.5rem 9rem .5rem 1.5rem; border-bottom:1px solid var(--line); }
 .picker .step { font:16px/1 ui-monospace, monospace; padding:.1rem .55rem; }
 .tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; min-width:16rem; text-align:center; }
-.timeline { flex:1; min-width:0; height:28px; display:flex; align-items:flex-end; gap:2px; overflow-x:auto; }
+.legend { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.9rem; font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
+.charts { display:flex; max-height:40vh; overflow-y:auto; border-bottom:1px solid var(--line); background:var(--card); }
+.lane-names { flex:none; width:clamp(9rem, 22vw, 16rem); display:flex; flex-direction:column; gap:3px; padding:6px 0; border-right:1px solid var(--line); }
+.lane-name { display:flex; flex-direction:column; justify-content:center; padding:0 .7rem; font:12px/1.25 ui-monospace, monospace;
+             color:var(--muted); cursor:pointer; overflow:hidden; }
+.lane-name span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lane-name small { font-size:11px; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lane-name:hover { color:var(--fg); }
+.lane-name.on { color:var(--fg); background:var(--sel); }
+.timeline { flex:1; min-width:0; display:flex; align-items:flex-start; gap:2px; overflow-x:auto; position:relative; padding:6px .8rem; }
 .timeline.dense { gap:0; }
-.timeline.dense .tl-bar { min-width:1px; border-radius:0; }
-.tl-bar { flex:1 1 0; min-width:2px; max-width:14px; background:var(--bar); border-radius:2px 2px 0 0; cursor:pointer;
+.timeline.dense .tl-col { min-width:1px; }
+.timeline.dense .tl-bar { border-radius:0; }
+.tl-col { flex:1 1 0; min-width:2px; max-width:28px; display:flex; flex-direction:column; gap:3px; border-radius:3px; }
+.tl-col.on { background:var(--sel); }
+.tl-col.gap { margin-left:7px; }
+.tl-cell { display:flex; align-items:flex-end; }
+.tl-col.link { background:var(--link); }
+.tl-bar { width:100%; background:var(--bar); border-radius:2px 2px 0 0; cursor:pointer;
           display:flex; flex-direction:column; overflow:hidden; }
 .tl-bar i { display:block; flex:none; }
 .tl-bar:hover { opacity:.7; }
@@ -753,7 +861,6 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
 .tl-fresh { background:var(--fresh); }
 .sw { display:inline-block; width:.65em; height:.65em; border-radius:2px; margin-right:.3em; }
 .tl-bar.err { background:var(--warn); }
-.tl-bar.gap { margin-left:7px; }
 .tl-bar.miss { opacity:.25; }
 button { font:inherit; padding:.3rem .7rem; border:1px solid var(--line); border-radius:6px;
          background:var(--card); color:var(--fg); cursor:pointer; }
@@ -788,6 +895,9 @@ mark { background:var(--mark); color:inherit; border-radius:2px; }
 .row .bp { font:600 10px/1 ui-monospace, monospace; color:var(--accent); border:1px solid var(--accent);
            border-radius:3px; padding:1px 3px; flex:none; }
 .row .seg { font:10px ui-monospace, monospace; color:var(--muted); flex:none; }
+.row .sub { font:11px ui-monospace, monospace; color:var(--accent); flex:0 1000 auto; min-width:0; overflow:hidden;
+            text-overflow:ellipsis; cursor:pointer; }
+.row .sub:hover { text-decoration:underline; }
 .row .new { width:7px; height:7px; border-radius:50%; background:var(--fresh); flex:none; }
 .row .used { font:10px ui-monospace, monospace; color:var(--answer); flex:none; }
 .row .tick { margin:0; flex:none; cursor:pointer; }
@@ -850,6 +960,11 @@ JS = r"""
     var nodes = data.nodes;
     nodes.forEach(function (item) { item.children = item.children.map(function (i) { return nodes[i]; }); });
     var requests = data.requests.map(function (i) { return nodes[i]; });
+    // The conversation chains by number: the main one, subagents and side calls, each on its lane.
+    var chains = data.chains || [], byCall = {};
+    chains.forEach(function (c) { if (c.call) byCall[c.call] = c; });
+    function chainOf(r) { return chains[r.info.chain - 1] || { kind: 'main', lane: 0 }; }
+    function chainName(c) { return c.kind === 'agent' ? c.agent + ' subagent' : c.kind === 'side' ? 'side call' : 'main conversation'; }
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
     var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
@@ -863,13 +978,25 @@ JS = r"""
         return e;
     };
     // A link that selects a part: reachable with Tab, and Enter selects and moves to its tree row.
-    var link = function (text, path) {
-        var a = el('a', '', text);
+    // With req, it selects that request.
+    var link = function (text, path, req, cls) {
+        var a = el(cls ? 'span' : 'a', cls || '', text);
+        var go = function () { select(req === undefined ? state.req : req, path); };
         a.tabIndex = 0;
-        a.onclick = function () { select(state.req, path); };
-        a.onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); select(state.req, path); focusRow(); } };
+        a.onclick = function (ev) { ev.stopPropagation(); go(); };
+        a.onkeydown = function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); ev.stopPropagation(); go(); focusRow(); } };
         return a;
     };
+    // The path of the part of a request that carries a subagent's call, for a link to land on it.
+    function callPath(r, call) {
+        var hit = null;
+        (function look(item) {
+            if (hit) return;
+            if (item.call === call && item.kind === 'tool_use') { hit = item.path; return; }
+            item.children.forEach(look);
+        })(r);
+        return hit || 'request';
+    }
 
     function root() { return requests[state.req]; }
     function answerOf(r) { return r.children[r.children.length - 1]; }
@@ -905,14 +1032,18 @@ JS = r"""
         return o === undefined ? depth < 1 : o;
     }
 
-    // One bar per request, its height the prompt's tokens, so a long session stays one row and shows
-    // how the context grew. A gap starts a new conversation chain; a failed call is red.
+    // Laid out like a profiler's charts: the toolbar steps through the requests; below it, one row per
+    // conversation, named in a column on the left as a tree: the main conversation, each subagent
+    // under the conversation that started it, side calls last. One bar per request, its height the
+    // prompt's tokens on one scale, so the rows show how each context grew. The selected request is
+    // lit down every row. A gap starts a new main conversation; a failed call is red.
+    var LANE = 64, MIN_LANE = 18;
     function failed(info) { return info.status >= 400 || info.aborted; }
     function renderPicker() {
         var box = $('picker');
         var barFocused = document.activeElement && document.activeElement.className.indexOf('tl-bar') === 0;
         box.innerHTML = '';
-        var info = root().info;
+        var info = root().info, own = chainOf(root());
         var prev = el('button', 'step', '\u2039'), next = el('button', 'step', '\u203a');
         prev.title = 'previous request (\u2190)'; next.title = 'next request (\u2192)';
         prev.disabled = state.req === 0; next.disabled = state.req === requests.length - 1;
@@ -921,18 +1052,72 @@ JS = r"""
         box.appendChild(prev);
         box.appendChild(el('span', 'tl-label', 'request ' + (state.req + 1) + ' of ' + requests.length + ' \u00b7 ' +
             (failed(info) ? (info.status >= 400 ? 'HTTP ' + info.status : 'aborted') : n(info.prompt_in) + ' tokens') +
-            ((info.new || []).length ? ' \u00b7 +' + n(root().newTok) + ' new' : '')));
+            ((info.new || []).length ? ' \u00b7 +' + n(root().newTok) + ' new' : '') +
+            (own.kind !== 'main' ? ' \u00b7 ' + chainName(own) : '')));
         box.appendChild(next);
-        var strip = el('div', 'timeline' + (requests.length > 120 ? ' dense' : ''));
+        var legend = el('div', 'legend');
+        [['tl-fresh', 'fresh'], ['tl-write', 'cache write'], ['tl-read', 'cache read']].forEach(function (pair) {
+            var item = el('span');
+            item.appendChild(el('i', 'sw ' + pair[0]));
+            item.appendChild(document.createTextNode(pair[1]));
+            legend.appendChild(item);
+        });
+        box.appendChild(legend);
+        renderCharts(barFocused);
+    }
+
+    function renderCharts(barFocused) {
+        var charts = $('charts');
+        var scrollTop = charts.scrollTop;
+        charts.innerHTML = '';
         var top = Math.max.apply(null, requests.map(function (r) { return r.info.prompt_in; }).concat([1]));
-        var q = query();
+        var height = function (r) { return Math.max(4, LANE * r.info.prompt_in / top); };
+        // Each row is as tall as its tallest bar, and tall enough for its name.
+        var lanes = [], named = [], counts = [];
+        requests.forEach(function (r) {
+            var c = chainOf(r);
+            while (lanes.length <= c.lane) { lanes.push(MIN_LANE); counts.push(0); }
+            lanes[c.lane] = Math.max(lanes[c.lane], height(r));
+            counts[c.lane]++;
+            if (!named[c.lane]) named[c.lane] = c;
+        });
+        var names = el('div', 'lane-names');
+        lanes.forEach(function (h, lane) {
+            var c = named[lane];
+            var row = el('div', 'lane-name' + (chainOf(root()).lane === lane ? ' on' : ''));
+            row.style.height = h + 'px';
+            row.style.paddingLeft = (0.7 + 1.1 * (c.depth || 0)) + 'rem';
+            var text = c.kind === 'agent' ? '\u23bf ' + c.agent + (c.task ? ' \u00b7 ' + c.task : '') :
+                       c.kind === 'side' ? 'Side calls' : 'Main conversation';
+            row.appendChild(el('span', '', text));
+            if (h >= 30) row.appendChild(el('small', '', counts[lane] + ' request' + (counts[lane] === 1 ? '' : 's') +
+                                            (lane === 0 ? ' \u00b7 tallest bar ' + n(top) : '')));
+            row.title = text + ' \u00b7 ' + counts[lane] + ' requests';
+            row.onclick = function () { select(c.first, 'request'); };
+            names.appendChild(row);
+        });
+        charts.appendChild(names);
+        var strip = el('div', 'timeline' + (requests.length > 120 ? ' dense' : ''));
+        // The requests linked to the selected one are tinted: for a subagent's request, the request
+        // that started it and the one that got its result; for a request that started subagents,
+        // their first requests and the ones that got their results.
+        var linked = {}, own = chainOf(root());
+        chains.forEach(function (c) {
+            if (c.kind !== 'agent' || (c !== own && c.spawn !== state.req)) return;
+            linked[c === own ? c.spawn : c.first] = true;
+            if (c.back !== null) linked[c.back] = true;
+        });
+        var q = query(), mainSeen = false;
         requests.forEach(function (r, i) {
+            var c = chainOf(r);
+            var col = el('div', 'tl-col' + (i === state.req ? ' on' : linked[i] ? ' link' : '') +
+                         (c.kind === 'main' && r.info.first_in_chain && mainSeen ? ' gap' : ''));
+            if (c.kind === 'main') mainSeen = true;
             var bar = el('div', 'tl-bar' + (i === state.req ? ' on' : '') + (failed(r.info) ? ' err' : '') +
-                         (i && r.info.chain !== requests[i - 1].info.chain ? ' gap' : '') +
                          (q && !search(r, q, {}) ? ' miss' : ''));
-            bar.style.height = Math.max(10, 100 * r.info.prompt_in / top) + '%';
+            bar.style.height = height(r) + 'px';
             bar.title = 'request ' + (i + 1) + ' \u00b7 ' + n(r.info.prompt_in) + ' tokens \u00b7 ' + r.info.model +
-                        ' \u00b7 chain ' + r.info.chain + (failed(r.info) ? ' \u00b7 failed' :
+                        ' \u00b7 ' + chainName(c) + (c.task ? ': ' + c.task : '') + (failed(r.info) ? ' \u00b7 failed' :
                         ' \u00b7 cache read ' + n(r.info.cache_read) + ', written ' + n(r.info.cache_write) +
                         ', fresh ' + n(r.info.fresh));
             // The bar is split by the API's own counts: fresh and written to the cache on top, read
@@ -949,15 +1134,23 @@ JS = r"""
             bar.tabIndex = i === state.req ? 0 : -1;
             bar.setAttribute('role', 'button');
             bar.setAttribute('aria-label', bar.title);
-            strip.appendChild(bar);
+            lanes.forEach(function (h, lane) {
+                var cell = el('div', 'tl-cell');
+                cell.style.height = h + 'px';
+                if (lane === c.lane) cell.appendChild(bar);
+                col.appendChild(cell);
+            });
+            strip.appendChild(col);
         });
-        box.appendChild(strip);
+        charts.appendChild(strip);
+        charts.scrollTop = scrollTop;
         // In a narrow window the strip scrolls; keep the selected bar in view.
-        var on = strip.querySelector('.tl-bar.on');
+        var on = strip.querySelector('.tl-col.on');
         if (on && strip.scrollWidth > strip.clientWidth) {
-            strip.scrollLeft = on.offsetLeft - strip.offsetLeft - strip.clientWidth / 2;
+            strip.scrollLeft = on.offsetLeft - strip.clientWidth / 2;
         }
-        if (barFocused && on) on.focus();
+        var bar = on && on.querySelector('.tl-bar');
+        if (barFocused && bar) bar.focus();
     }
 
     function renderTree() {
@@ -999,6 +1192,13 @@ JS = r"""
             }
             lbl.appendChild(el('span', 'name', item.label));
             if (item.bp) lbl.appendChild(el('span', 'bp', 'cache'));
+            var sub = item.kind === 'tool_use' && byCall[item.call];
+            if (sub) {
+                var go = link('\u2192 ' + sub.agent + (sub.task ? ': ' + sub.task : '') + ' (' + sub.requests + ' request' +
+                              (sub.requests === 1 ? '' : 's') + ')', 'request', sub.first, 'sub');
+                go.title = 'go to the first request of this subagent';
+                lbl.appendChild(go);
+            }
             if (rel === 'new') {
                 var dot = el('span', 'new');
                 dot.title = 'new since the previous request';
@@ -1181,6 +1381,16 @@ JS = r"""
         pane.appendChild(el('h2', '', item.label));
         var facts = el('div', 'facts');
         if (item.kind === 'request') {
+            var own = chainOf(r);
+            if (own.kind === 'agent') {
+                var from = el('span', '', own.agent + ' subagent \u00b7 started by ');
+                from.appendChild(link('request ' + (own.spawn + 1), callPath(requests[own.spawn], own.call), own.spawn));
+                if (own.back !== null) {
+                    from.appendChild(document.createTextNode(', result back in '));
+                    from.appendChild(link('request ' + (own.back + 1), 'request', own.back));
+                }
+                facts.appendChild(from);
+            }
             fact(facts, 'model', info.model);
             fact(facts, 'prompt', n(info.prompt_in) + ' tokens');
             fact(facts, 'fresh', n(info.fresh), '', 'tl-fresh');
@@ -1621,6 +1831,7 @@ def render_page(run_dir: Path, profile: dict) -> str:
 <style>{CSS}</style></head>
 <body>
 <div class="picker" id="picker" title="&larr; &rarr; switch request"></div>
+<div class="charts" id="charts"></div>
 <div class="split">
   <div class="tree">
     <div class="toolbar">

@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- The timeline is laid out like a profiler's charts: one row per conversation, named on the left as
+  a tree, with each subagent under the conversation that started it and side calls, such as the
+  quota check, at the bottom. The selected request is lit down every row, and the requests linked to
+  it are tinted: the one that started a subagent and the one that got its result back. An Agent call
+  in the tree links to the subagent's first request, and the subagent's requests link back to it.
+
 ## [0.3.0]
 
 - A toggled button, such as **sort by size** or **Only new**, now looks switched on.

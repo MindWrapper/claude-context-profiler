@@ -36,6 +36,8 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
    - **What each request adds:** new parts have a blue dot, and **Only new** hides the rest.
    - **What the cache did:** each bar in the timeline shows what was read from the cache, written to
      it, or sent fresh.
+   - **Where the subagents ran:** each subagent gets its own row in the timeline, under the
+     conversation that started it.
    - **What the session used:** "used 3×" next to the tools, skills and servers Claude called.
 
 When you quit Claude, the recording stops and the page is saved; `ccprof` prints its path as it
