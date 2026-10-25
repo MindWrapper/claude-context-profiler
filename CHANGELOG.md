@@ -6,6 +6,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+- A **Session** tab next to the parts tree shows the session as Claude Code does: your prompts,
+  Claude's replies and tool calls with the first line of each result, and each subagent's steps
+  under the Agent call that started it. A step selects the part of the request it came from.
+  Requests Claude Code sends on the side, such as a suggested next prompt, are left out.
 - The timeline is laid out like a profiler's charts: one row per conversation, named on the left as
   a tree, with each subagent under the conversation that started it and side calls, such as the
   quota check, at the bottom. The selected request is lit down every row, and the requests linked to

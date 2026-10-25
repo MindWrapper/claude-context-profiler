@@ -74,6 +74,19 @@ dot, and **only new** keeps them and the parts around them (`newness`). Requests
 `reader.is_messages_call` takes only the exact `/v1/messages` path, so the `count_tokens` calls
 Claude Code makes (for `/context`, say) are not requests.
 
+## The session tab
+
+The left panel has two tabs: **Parts**, the tree of the request on show, and **Session**, the
+session as Claude Code shows it (`session_steps`): what the user typed (`prompt_text`, the last
+text block outside Claude Code's tags), Claude's text, and its tool calls as `Name(main argument)`
+(`call_label`) with the first line of their results. A subagent's steps go under the Agent call
+that started it. Each step names its request and the path of its part there; clicking it selects
+that part, and the steps of the request on show are marked. The main conversation's requests that
+Claude Code sends on the side (`side_questions`: a suggested next prompt, a recap) are left out: the
+next request has another message where their question was, or, for the last request of a chain,
+it started within a second of an answer that ended its turn and called no tools. A recap that ends
+a chain still shows; nothing in it tells it from a prompt the user typed.
+
 ## Search
 
 The search box keeps the parts whose label or text (`text` or `raw` in `content`) contains the

@@ -19,6 +19,7 @@ import hashlib
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from .reader import (
@@ -805,13 +806,160 @@ def chain_links(exchanges: list[dict]) -> list[dict]:
     return [chains[number] for number in sorted(chains)]
 
 
+# The argument Claude Code shows in a tool call's line, first found wins: Bash(ls), Read(cli.py).
+MAIN_ARGS = ("command", "file_path", "pattern", "url", "query", "skill", "description", "path", "prompt")
+
+
+def first_line(text: str, limit: int = 160) -> str:
+    for line in text.splitlines():
+        if line.strip():
+            return shorten(line.strip(), limit)
+    return ""
+
+
+def call_label(name: str, args: dict) -> str:
+    """A tool call as Claude Code shows it: Bash(ls -la), Explore(Report hello.py output)."""
+    if name in AGENT_TOOLS:
+        name = args.get("subagent_type") or name
+    elif name.startswith("mcp__"):
+        name = " - ".join(name.split("__")[1:3])
+    main = next((args[key] for key in MAIN_ARGS if isinstance(args.get(key), str) and args[key].strip()), None)
+    if main is None:
+        main = next((value for value in args.values() if isinstance(value, str) and value.strip()), "")
+    return f"{name}({first_line(main, 80)})"
+
+
+def prompt_text(message: dict) -> str | None:
+    """What the user typed, from a user message without tool results. Claude Code adds its reminders
+    as blocks of their own, in tags; the user's text is the last block outside them."""
+    content = message.get("content")
+    blocks = [{"type": "text", "text": content}] if isinstance(content, str) else content or []
+    if message.get("role") != "user" or any(isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks):
+        return None
+    for block in reversed(blocks):
+        text = (block.get("text") or "").strip() if isinstance(block, dict) and block.get("type") == "text" else ""
+        command = COMMAND_RE.search(text)
+        if command:
+            return "/" + command.group(1)
+        if text and not text.startswith("<"):
+            return text
+    return None
+
+
+def started(exchange: dict) -> float | None:
+    try:
+        return datetime.fromisoformat(exchange["record"].get("started_at", "")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def said(message: dict) -> tuple:
+    """A message's role and text. Claude Code writes a message again in another form once its cache
+    marker moves on, a list of blocks becoming a string, so the form does not count."""
+    content = message.get("content")
+    blocks = [] if isinstance(content, str) else content or []
+    text = content if isinstance(content, str) else "\n".join(
+        block_text({k: v for k, v in block.items() if k != "cache_control"} if isinstance(block, dict) else block)
+        for block in blocks)
+    return message.get("role"), text.strip()
+
+
+def side_questions(exchanges: list[dict]) -> set[int]:
+    """The requests Claude Code sends on the side of a conversation: the conversation so far plus a
+    question of its own, such as a suggested next prompt or a recap after you were away. Claude Code
+    does not show them, and the conversation goes on without them.
+
+    The next request of the chain has another message where the question was. The last request of a
+    chain has no next one; it is a side question when it started within a second of an answer that
+    had ended its turn, faster than anyone types, and called no tools."""
+    side: set[int] = set()
+    by_chain: dict[int, list[int]] = {}
+    for position, exchange in enumerate(exchanges):
+        by_chain.setdefault(exchange["chain"], []).append(position)
+    for positions in by_chain.values():
+        for k, position in enumerate(positions):
+            messages = exchanges[position]["messages"]
+            if not messages:
+                continue
+            if k + 1 < len(positions):
+                later = exchanges[positions[k + 1]]["messages"]
+                if len(later) < len(messages) or said(later[len(messages) - 1]) != said(messages[-1]):
+                    side.add(position)
+            elif k:
+                before, now = exchanges[positions[k - 1]], exchanges[position]
+                start, end = started(now), started(before)
+                calls = any(block.get("type") == "tool_use" for block in now["answer"]["blocks"])
+                if (before["answer"].get("stop_reason") == "end_turn" and not calls and start is not None
+                        and end is not None and start - end - before["record"].get("duration_ms", 0) / 1000 < 1):
+                    side.add(position)
+    return side
+
+
+def session_steps(exchanges: list[dict], links: list[dict]) -> list[dict]:
+    """The session as Claude Code shows it: what the user typed, Claude's text, its tool calls with the
+    first line of their results, and each subagent's steps under the Agent call that started it. A
+    step names its request and the path of its part there, so the page can select it."""
+    results: dict[str, tuple[str, bool]] = {}
+    for exchange in exchanges:
+        for message in exchange["messages"][exchange["kept"]:]:
+            content = message.get("content")
+            for block in content if isinstance(content, list) else []:
+                if isinstance(block, dict) and block.get("type") == "tool_result":
+                    results.setdefault(block.get("tool_use_id", ""), (first_line(block_text(block)), bool(block.get("is_error"))))
+    agents = {chain["call"]: chain for chain in links if chain["kind"] == "agent"}
+    branch = side_questions(exchanges)
+
+    def steps_of(chain: dict) -> list[dict]:
+        steps: list[dict] = []
+        typed: set[tuple[int, str]] = set()
+        for position in range(chain["first"], chain["last"] + 1):
+            exchange = exchanges[position]
+            if exchange["chain"] != chain["chain"] or position in branch:
+                continue
+            # A subagent's first message is the prompt its Agent call shows already.
+            for i in range(exchange["kept"], len(exchange["messages"])) if chain["kind"] == "main" else ():
+                text = prompt_text(exchange["messages"][i])
+                if text and (i, text) not in typed:
+                    typed.add((i, text))
+                    steps.append({"kind": "prompt", "req": position, "path": f"messages/{i}", "label": first_line(text)})
+            for j, block in enumerate(exchange["answer"]["blocks"]):
+                step = {"req": position, "path": f"answer/{j}"}
+                if block.get("type") == "text" and (block.get("text") or "").strip():
+                    step.update(kind="text", label=first_line(block["text"]))
+                elif block.get("type") in ("tool_use", "server_tool_use"):
+                    step.update(kind="tool", label=call_label(block.get("name", "?"), tool_input(block)))
+                    call = block.get("id", "")
+                    if call in agents:
+                        sub = agents[call]
+                        done = "Done" if sub["back"] is not None else "No result yet"
+                        step.update(kind="agent", children=steps_of(sub),
+                                    result=f"{done} \u00b7 {sub['requests']} request{'' if sub['requests'] == 1 else 's'}")
+                    elif call in results:
+                        step["result"], step["error"] = results[call]
+                else:
+                    continue
+                steps.append(step)
+        return steps
+
+    session: list[dict] = []
+    for chain in links:
+        if chain["kind"] != "main":
+            continue
+        if session:
+            session.append({"kind": "restart", "req": chain["first"], "path": "request",
+                            "label": "New conversation, after /clear or a compaction"})
+        session.extend(steps_of(chain))
+    return session
+
+
 def build_profile(exchanges: list[dict]) -> dict:
     store = Store()
     names = server_names(exchanges)
     chains: dict = {}
     requests = [request_tree(exchanges, i, store, names, chains) for i in range(len(exchanges))]
+    links = chain_links(exchanges)
     return {"requests": requests, "content": store.items, "usage": session_usage(exchanges),
-            "servers": sorted(names.values()), "chains": chain_links(exchanges)}
+            "servers": sorted(names.values()), "chains": links, "session": session_steps(exchanges, links)}
 
 
 # --- the page --------------------------------------------------------------
@@ -881,6 +1029,28 @@ mark { background:var(--mark); color:inherit; border-radius:2px; }
        padding:.15rem .8rem .15rem 0; cursor:pointer; border-bottom:1px solid transparent; }
 .row:hover { background:var(--code); }
 .row.sel { background:var(--sel); }
+.tabs { display:flex; gap:0; padding:.5rem .8rem 0; border-bottom:1px solid var(--line); }
+.tabs button { border:none; border-bottom:2px solid transparent; border-radius:0; background:none; color:var(--muted); padding:.3rem .8rem; }
+.tabs button.on { color:var(--fg); border-bottom-color:var(--accent); }
+.tree.session .toolbar { display:none; }
+.srow { display:grid; grid-template-columns:1.1rem 1fr auto; gap:.2rem .4rem; padding:.3rem .8rem; cursor:pointer; align-items:baseline; }
+.srow:hover { background:var(--code); }
+.srow.cur { box-shadow:inset 3px 0 0 var(--accent); }
+.srow.sel { background:var(--sel); }
+.srow:focus { outline:none; }
+.srow:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.srow .mark { color:var(--muted); font:12px ui-monospace, monospace; text-align:center; }
+.srow.tool .mark, .srow.agent .mark { color:var(--answer); }
+.srow.prompt { background:var(--code); }
+.srow.prompt .mark { color:var(--accent); }
+.srow .what { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.srow.tool .what, .srow.agent .what { font:12.5px ui-monospace, monospace; }
+.srow.agent .what { font-weight:600; }
+.srow.restart .what { color:var(--muted); font-style:italic; }
+.srow .result { grid-column:2 / 4; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+                color:var(--muted); font:12px ui-monospace, monospace; }
+.srow .result.warn { color:var(--warn); }
+.srow .req { font:11px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
 .row.around .name { color:var(--muted); }
 .note.empty { padding:0 .8rem; }
 .row .lbl { display:flex; align-items:center; gap:.3rem; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -967,7 +1137,7 @@ JS = r"""
     function chainName(c) { return c.kind === 'agent' ? c.agent + ' subagent' : c.kind === 'side' ? 'side call' : 'main conversation'; }
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
+    var state = { view: 'parts', req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -1154,6 +1324,13 @@ JS = r"""
     }
 
     function renderTree() {
+        document.querySelector('.tree').className = 'tree' + (state.view === 'session' ? ' session' : '');
+        $('tab-parts').className = state.view === 'parts' ? 'on' : '';
+        $('tab-session').className = state.view === 'session' ? 'on' : '';
+        $('tab-parts').setAttribute('aria-selected', state.view === 'parts' ? 'true' : 'false');
+        $('tab-session').setAttribute('aria-selected', state.view === 'session' ? 'true' : 'false');
+        if (state.view === 'session') { renderSession(); return; }
+        $('rows').setAttribute('role', 'tree');
         var box = $('rows');
         box.innerHTML = '';
         var r = root(), q = query(), hits = null;
@@ -1240,6 +1417,69 @@ JS = r"""
         box.appendChild(el('p', 'note empty', q ? 'No part of this request contains \u201c' + state.query.trim() + '\u201d.' :
             r.info.first_in_chain ? 'The first request of its conversation: there is no previous one to compare with.' :
             'This request adds nothing to the previous one.'));
+    }
+
+    // --- the session -----------------------------------------------------
+    // The session as Claude Code shows it: what you typed, Claude's text and tool calls with the first
+    // line of their results, each subagent's steps under the Agent call that started it. A step
+    // selects the part of the request it came from; the steps of the request on show are marked.
+    function renderSession() {
+        var box = $('rows');
+        box.innerHTML = '';
+        box.setAttribute('role', 'list');
+        $('found').textContent = '';
+        var last = -1, focus = null;
+        var walk = function (step, depth) {
+            var on = step.req === state.req && step.path === state.path;
+            var row = el('div', 'srow ' + step.kind + (step.req === state.req ? ' cur' : '') + (on ? ' sel' : ''));
+            row.style.paddingLeft = (0.8 + 1.4 * depth) + 'rem';
+            row.appendChild(el('span', 'mark', step.kind === 'prompt' ? '>' : step.kind === 'restart' ? '\u2014' : '\u23fa'));
+            row.appendChild(el('span', 'what', step.label));
+            // The request a step came from, once for each run of steps from the same request.
+            var r = requests[step.req];
+            var req = el('span', 'req', step.req === last ? '' : '#' + (step.req + 1) + ' \u00b7 ' + n(r.info.prompt_in));
+            req.title = 'request ' + (step.req + 1) + ', ' + n(r.info.prompt_in) + ' tokens';
+            row.appendChild(req);
+            last = step.req;
+            if (step.result) row.appendChild(el('span', 'result' + (step.error ? ' warn' : ''), '\u23bf  ' + step.result));
+            row.title = step.label;
+            row.setAttribute('role', 'listitem');
+            row.tabIndex = -1;
+            row.onclick = function () { select(step.req, step.path); };
+            row.onkeydown = function (ev) { stepKey(ev, step); };
+            if (on || (!focus && step.req === state.req)) focus = row;
+            box.appendChild(row);
+            (step.children || []).forEach(function (child) { walk(child, depth + 1); });
+        };
+        (data.session || []).forEach(function (step) { walk(step, 0); });
+        if (!box.childNodes.length) {
+            box.appendChild(el('p', 'note empty', 'No conversation yet: only side calls so far.'));
+            return;
+        }
+        // One step takes Tab: the selected one, or the first of the request on show.
+        focus = focus || box.firstChild;
+        focus.tabIndex = 0;
+        var tree = document.querySelector('.tree');
+        if (focus.offsetTop < tree.scrollTop || focus.offsetTop > tree.scrollTop + tree.clientHeight - 40) {
+            focus.scrollIntoView({ block: 'center' });
+        }
+    }
+    // Up and down move through the steps and select each.
+    function stepKey(ev, step) {
+        var rows = [].slice.call($('rows').querySelectorAll('.srow'));
+        var at = rows.indexOf(ev.currentTarget), go = null;
+        if (ev.key === 'ArrowDown') go = rows[at + 1];
+        else if (ev.key === 'ArrowUp') go = rows[at - 1];
+        else if (ev.key === 'Enter') go = ev.currentTarget;
+        else return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (go) { go.click(); var now = $('rows').querySelector('.srow.sel'); if (now) now.focus(); }
+    }
+    function showView(view) {
+        state.view = view;
+        renderTree();
+        persist();
     }
 
     // --- search -----------------------------------------------------------
@@ -1729,7 +1969,7 @@ JS = r"""
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, index: root().info.index, atEnd: state.req === requests.length - 1, path: state.path,
                 sortBySize: state.sortBySize, open: state.open, jsonOpen: state.jsonOpen, paneSort: state.paneSort,
-                picked: state.picked, dialog: state.dialog, rawView: state.rawView, query: state.query, onlyNew: state.onlyNew,
+                picked: state.picked, dialog: state.dialog, rawView: state.rawView, query: state.query, onlyNew: state.onlyNew, view: state.view,
                 treeTop: document.querySelector('.tree').scrollTop, paneTop: $('pane').scrollTop,
                 searching: document.activeElement === $('search')
             }));
@@ -1743,6 +1983,8 @@ JS = r"""
     $('expand').onclick = function () { var all = function (it) { state.open[it.path] = true; it.children.forEach(all); }; all(root()); renderTree(); persist(); };
     $('collapse').onclick = function () { state.open = {}; renderTree(); persist(); };
     $('copy').onclick = openPrompt;
+    $('tab-parts').onclick = function () { showView('parts'); };
+    $('tab-session').onclick = function () { showView('session'); };
     $('prompt-copy').onclick = function () {
         var b = $('prompt-copy');
         copyText($('prompt-text').textContent,
@@ -1766,7 +2008,7 @@ JS = r"""
     document.addEventListener('keydown', function (ev) {
         if ($('prompt-dialog').open) return;
         if (ev.target === $('search')) return;
-        if (ev.key === '/') { ev.preventDefault(); $('search').focus(); return; }
+        if (ev.key === '/' && state.view === 'parts') { ev.preventDefault(); $('search').focus(); return; }
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
     });
@@ -1780,6 +2022,7 @@ JS = r"""
         state.query = $('search').value = saved.query || '';
         state.jsonOpen = saved.jsonOpen || {};
         state.onlyNew = !!saved.onlyNew;
+        if (saved.view === 'session') state.view = 'session';
         state.paneSort = saved.paneSort || null;
         var at = -1;
         requests.forEach(function (r, i) { if (r.info.index === saved.index) at = i; });
@@ -1834,6 +2077,10 @@ def render_page(run_dir: Path, profile: dict) -> str:
 <div class="charts" id="charts"></div>
 <div class="split">
   <div class="tree">
+    <div class="tabs" role="tablist">
+      <button id="tab-parts" role="tab" title="what the selected request is made of">Parts</button>
+      <button id="tab-session" role="tab" title="the session as Claude Code shows it">Session</button>
+    </div>
     <div class="toolbar">
       <button id="sort">sort by size</button>
       <button id="expand">expand all</button>

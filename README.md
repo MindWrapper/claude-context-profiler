@@ -31,6 +31,9 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
 
    ![The context profiler page](docs/screenshot.png)
 
+   - **What happened, step by step:** the **Session** tab shows the session as Claude Code does:
+     your prompts, Claude's replies and tool calls, and each subagent's steps under the call that
+     started it. Click a step to see the request it came from.
    - **What a request is made of:** tools, system prompt, skills, MCP servers and messages, biggest
      first. Click any part to read it, or search for a word.
    - **What each request adds:** new parts have a blue dot, and **Only new** hides the rest.
