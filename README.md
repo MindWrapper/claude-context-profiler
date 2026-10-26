@@ -66,6 +66,27 @@ never changes your config itself.
 
 ## FAQ
 
+### How do I read the timeline?
+
+Each bar is one request, as tall as its prompt: purple was read from the cache, orange written to
+it, blue sent fresh, and red failed. Each conversation has a row, with subagents under the one that
+started them and side calls at the bottom.
+
+### How do I find what to cut?
+
+Open a request of your main conversation: the biggest parts come first. A big tool, skill or MCP
+server without "used" next to it never ran in this session. Tick it and press **Disable prompt**.
+
+### Why cut it, if it's cached anyway?
+
+The cache makes it cheaper, not free and not smaller:
+
+- **Cost:** every request still reads it, at about a tenth of the price. After a pause the cache
+  expires, and the whole prompt is written again at more than full price.
+- **Space:** it still fills the context window, so the conversation gets compacted sooner.
+- **Context rot:** the more the model has to read past, the less attention it pays to what matters,
+  and every unused tool is one more to choose from.
+
 ### How do I pass options to Claude?
 
 Put them after `ccprof`; they go to `claude` unchanged. `ccprof --continue` runs
