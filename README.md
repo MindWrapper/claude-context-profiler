@@ -62,17 +62,40 @@ exits.
 
 Tick what you want off and press **Disable prompt**. It gives you a prompt to paste into Claude,
 which shows you the change to `~/.claude/settings.json` and asks before it writes. The profiler
-never changes your config itself. To bring an item back, undo that change.
+never changes your config itself.
 
-## Options and updates
+## FAQ
 
-- Options are forwarded to `claude`: `ccprof --continue` runs `claude --continue` with recording on.
-- To update: `uv tool upgrade claude-context-profiler`. To remove:
-  `uv tool uninstall claude-context-profiler`.
-- `CLAUDE_CONTEXT_PROFILER_OPEN=1` also opens the page in your browser at the first API call.
-  `CLAUDE_CONTEXT_PROFILER_HOME` moves the recordings (default `~/.claude-context-profiler`).
-- Without uv: clone the repo and run `PYTHONPATH=CLONE/src python3 -m claude_context_profiler`;
-  Python 3.9 or later is all it needs.
+### How do I pass options to Claude?
+
+Put them after `ccprof`; they go to `claude` unchanged. `ccprof --continue` runs
+`claude --continue` with recording on.
+
+### How do I update or remove it?
+
+`uv tool upgrade claude-context-profiler` updates it, and
+`uv tool uninstall claude-context-profiler` removes it.
+
+### Can the page open by itself?
+
+Yes: with `CLAUDE_CONTEXT_PROFILER_OPEN=1`, your browser opens it at the first API call.
+
+### Can I keep the recordings somewhere else?
+
+Yes: set `CLAUDE_CONTEXT_PROFILER_HOME` to another folder. The default is
+`~/.claude-context-profiler`.
+
+### Can I run it without uv?
+
+Yes. Clone the repo and run `PYTHONPATH=CLONE/src python3 -m claude_context_profiler`; it needs
+only Python 3.9 or later.
+
+### What happens if I disable a Claude Code tool and later need it?
+
+Claude no longer has the tool, so it works around it, for example with Bash, or tells you it can't
+do the task. To bring the tool back, delete its entry from `permissions.deny` in
+`~/.claude/settings.json`, or ask Claude to, and start a new Claude Code session. The same goes for
+a skill, a subagent type or an MCP server: undo the change the Disable prompt made.
 
 ## Limits
 
