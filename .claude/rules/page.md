@@ -76,7 +76,7 @@ Claude Code makes (for `/context`, say) are not requests.
 
 ## The session tab
 
-The left panel has two tabs: **Parts**, the tree of the request on show, and **Session**, the
+The left panel has two tabs: **Request**, the tree of the request on show, and **Session**, the
 session as Claude Code shows it (`session_steps`): what the user typed (`prompt_text`, the last
 text block outside Claude Code's tags), Claude's text, and its tool calls as `Name(main argument)`
 (`call_label`) with the first line of their results. A subagent's steps go under the Agent call

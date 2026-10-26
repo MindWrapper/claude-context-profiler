@@ -1139,7 +1139,7 @@ JS = r"""
     function chainName(c) { return c.kind === 'agent' ? c.agent + ' subagent' : c.kind === 'side' ? 'side call' : 'main conversation'; }
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { view: 'parts', req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
+    var state = { view: 'request', req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -1334,9 +1334,9 @@ JS = r"""
 
     function renderTree() {
         document.querySelector('.tree').className = 'tree' + (state.view === 'session' ? ' session' : '');
-        $('tab-parts').className = state.view === 'parts' ? 'on' : '';
+        $('tab-request').className = state.view === 'request' ? 'on' : '';
         $('tab-session').className = state.view === 'session' ? 'on' : '';
-        $('tab-parts').setAttribute('aria-selected', state.view === 'parts' ? 'true' : 'false');
+        $('tab-request').setAttribute('aria-selected', state.view === 'request' ? 'true' : 'false');
         $('tab-session').setAttribute('aria-selected', state.view === 'session' ? 'true' : 'false');
         if (state.view === 'session') { renderSession(); return; }
         $('rows').setAttribute('role', 'tree');
@@ -1992,7 +1992,7 @@ JS = r"""
     $('expand').onclick = function () { var all = function (it) { state.open[it.path] = true; it.children.forEach(all); }; all(root()); renderTree(); persist(); };
     $('collapse').onclick = function () { state.open = {}; renderTree(); persist(); };
     $('copy').onclick = openPrompt;
-    $('tab-parts').onclick = function () { showView('parts'); };
+    $('tab-request').onclick = function () { showView('request'); };
     $('tab-session').onclick = function () { showView('session'); };
     $('prompt-copy').onclick = function () {
         var b = $('prompt-copy');
@@ -2017,7 +2017,7 @@ JS = r"""
     document.addEventListener('keydown', function (ev) {
         if ($('prompt-dialog').open) return;
         if (ev.target === $('search')) return;
-        if (ev.key === '/' && state.view === 'parts') { ev.preventDefault(); $('search').focus(); return; }
+        if (ev.key === '/' && state.view === 'request') { ev.preventDefault(); $('search').focus(); return; }
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
     });
@@ -2096,7 +2096,7 @@ def render_page(run_dir: Path, profile: dict) -> str:
 <div class="split">
   <div class="tree">
     <div class="tabs" role="tablist">
-      <button id="tab-parts" role="tab" title="what the selected request is made of">Parts</button>
+      <button id="tab-request" role="tab" title="what the selected request is made of">Request</button>
       <button id="tab-session" role="tab" title="the session as Claude Code shows it">Session</button>
     </div>
     <div class="toolbar">
