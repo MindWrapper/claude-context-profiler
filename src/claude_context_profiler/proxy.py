@@ -158,7 +158,11 @@ class Handler(BaseHTTPRequestHandler):
         started = time.time()
         index = cfg.recorder.next_index()
 
-        request_raw = self.read_request_body()
+        try:
+            request_raw = self.read_request_body()
+        except ValueError:  # a chunk size or Content-Length that is not a number
+            self.fail(400, "malformed request body")
+            return
         request_type = self.headers.get("Content-Type") or ""
         req_field, req_value = decode_body(request_raw, request_type)
 
