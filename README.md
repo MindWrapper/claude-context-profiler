@@ -61,8 +61,9 @@ exits.
 ## Switching things off
 
 Tick what you want off and press **Disable prompt**. It gives you a prompt to paste into Claude,
-which shows you the change to `~/.claude/settings.json` and asks before it writes. The profiler
-never changes your config itself.
+which shows you the change to `~/.claude/settings.json` and asks before it writes. An MCP server is
+blocked there by name, even when it is defined in `~/.claude.json` or a project's `.mcp.json`. The
+profiler never changes your config itself.
 
 ## FAQ
 

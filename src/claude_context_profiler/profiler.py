@@ -1885,7 +1885,8 @@ JS = r"""
         });
         var count = picked().length;
         var L = ['Switch off ' + (count === 1 ? 'this part' : 'these ' + count + ' parts') +
-                 ' of my Claude Code context by editing ~/.claude/settings.json.', ''];
+                 ' of my Claude Code context by editing my user settings file: ~/.claude/settings.json, or ' +
+                 'settings.json in $CLAUDE_CONFIG_DIR if that is set.', ''];
         if (deny.length) {
             L.push('Add these entries to "permissions" > "deny", and keep the entries already there:');
             deny.forEach(function (entry) { L.push('- ' + JSON.stringify(entry)); });
@@ -1906,10 +1907,12 @@ JS = r"""
             L.push('');
         }
         // deniedMcpServers keeps Claude Code from connecting to the server at all, so its tools and
-        // instructions are gone; a "permissions" > "deny" rule would leave it connected.
+        // instructions are gone; a "permissions" > "deny" rule would leave it connected. It works
+        // from the user settings file wherever the server is defined, so Claude need not look for that.
         if (servers.length) {
             L.push('Disconnect these MCP servers: add these entries to "deniedMcpServers", and keep the entries ' +
-                   'already there:');
+                   'already there. This blocks a server wherever it is defined (~/.claude.json, a project\'s ' +
+                   '.mcp.json, a plugin), so don\'t edit or remove its definition:');
             // A server that sent no instructions is known only as its tool names spell it.
             servers.forEach(function (name) {
                 L.push('- ' + JSON.stringify({ serverName: name }) + ((data.servers || []).indexOf(name) < 0 ?

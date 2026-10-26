@@ -5,6 +5,9 @@ Versions follow [Semantic Versioning](https://semver.org/); the version is `__ve
 
 ## [Unreleased]
 
+- The Disable prompt says that an MCP server is blocked wherever it is defined, and follows
+  `CLAUDE_CONFIG_DIR`.
+
 ## [0.3.0]
 
 First version.
