@@ -1,6 +1,6 @@
 """Take docs/screenshot.png from a recording: the last request that adds something to the one before,
 with Only new on, so the tree shows the new parts with their blue dots and the right pane shows the
-first of them. The timeline above shows how the context grew.
+first of them. The timeline above, opened, shows how the context grew.
 Usage: python3 shot.py RUN_DIR OUT.png
 """
 
@@ -52,7 +52,8 @@ def main() -> int:
     title = re.search(r"<title>(.*?)</title>", html).group(1)
     position, path = last_with_news(run_dir)
     # The page restores its view from sessionStorage; seed it before the page script runs.
-    state = {"req": position, "path": path, "sortBySize": True, "onlyNew": True, "open": {"request": True, "messages": True}}
+    state = {"req": position, "path": path, "sortBySize": True, "onlyNew": True, "timelineOpen": True,
+             "open": {"request": True, "messages": True}}
     seed = "<script>sessionStorage.setItem(%s, %s);</script>" % (
         json.dumps("profile:" + title), json.dumps(json.dumps(state)))
     with tempfile.TemporaryDirectory() as tmp:

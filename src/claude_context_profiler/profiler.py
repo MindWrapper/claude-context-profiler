@@ -984,7 +984,10 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
 .tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
 .where { display:flex; gap:.5rem; align-items:baseline; font:600 13px ui-monospace, monospace; white-space:nowrap; margin-right:.6rem; }
 .where .branch { font-weight:400; color:var(--muted); }
+.fold { margin-left:auto; font-size:12px; }
+.legend + .fold { margin-left:0; }
 .legend { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.9rem; font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
+.charts[hidden] { display:none; }
 .charts { display:flex; max-height:40vh; overflow-y:auto; border-bottom:1px solid var(--line); background:var(--card); }
 .lane-names { flex:none; width:clamp(9rem, 22vw, 16rem); display:flex; flex-direction:column; gap:3px; padding:6px 0; border-right:1px solid var(--line); }
 .lane-name { display:flex; flex-direction:column; justify-content:center; padding:0 .7rem; font:12px/1.25 ui-monospace, monospace;
@@ -1140,7 +1143,7 @@ JS = r"""
     function chainName(c) { return c.kind === 'agent' ? c.agent + ' subagent' : c.kind === 'side' ? 'side call' : 'main conversation'; }
     // paneSort is null while the table follows the tree's sort toggle; clicking
     // a column header gives the table an order of its own.
-    var state = { view: 'request', req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
+    var state = { view: 'request', timelineOpen: false, req: 0, path: 'request', sortBySize: true, open: {}, jsonOpen: {}, rawView: false, paneSort: null, picked: {}, dialog: false, query: '', onlyNew: false };
     var $ = function (id) { return document.getElementById(id); };
     var n = function (x) { return (x || 0).toLocaleString('en-US'); };
     var pct = function (a, b) { return b ? (100 * a / b).toFixed(1) + '%' : '-'; };
@@ -1247,7 +1250,18 @@ JS = r"""
             item.appendChild(document.createTextNode(pair[1]));
             legend.appendChild(item);
         });
-        box.appendChild(legend);
+        if (state.timelineOpen) box.appendChild(legend);
+        // The rows fold away, for more room below; the buttons still step through the requests.
+        var fold = el('button', 'fold', (!state.timelineOpen ? '\u25b8' : '\u25be') + ' timeline');
+        fold.title = state.timelineOpen ? 'hide the timeline' : 'show the timeline';
+        fold.setAttribute('aria-expanded', state.timelineOpen ? 'true' : 'false');
+        fold.onclick = function () {
+            state.timelineOpen = !state.timelineOpen;
+            renderPicker();
+            persist();
+            $('picker').querySelector('.fold').focus();
+        };
+        box.appendChild(fold);
         renderCharts(barFocused);
     }
 
@@ -1255,6 +1269,9 @@ JS = r"""
         var charts = $('charts');
         var scrollTop = charts.scrollTop;
         charts.innerHTML = '';
+        // Folded by default: the toolbar's buttons step through the requests without it.
+        charts.hidden = !state.timelineOpen;
+        if (!state.timelineOpen) return;
         var top = Math.max.apply(null, requests.map(function (r) { return r.info.prompt_in; }).concat([1]));
         var height = function (r) { return Math.max(4, LANE * r.info.prompt_in / top); };
         // Each row is as tall as its tallest bar, and tall enough for its name.
@@ -1984,7 +2001,7 @@ JS = r"""
             sessionStorage.setItem(storeKey, JSON.stringify({
                 req: state.req, index: root().info.index, atEnd: state.req === requests.length - 1, path: state.path,
                 sortBySize: state.sortBySize, open: state.open, jsonOpen: state.jsonOpen, paneSort: state.paneSort,
-                picked: state.picked, dialog: state.dialog, rawView: state.rawView, query: state.query, onlyNew: state.onlyNew, view: state.view,
+                picked: state.picked, dialog: state.dialog, rawView: state.rawView, query: state.query, onlyNew: state.onlyNew, view: state.view, timelineOpen: state.timelineOpen,
                 treeTop: document.querySelector('.tree').scrollTop, paneTop: $('pane').scrollTop,
                 searching: document.activeElement === $('search')
             }));
@@ -2040,6 +2057,7 @@ JS = r"""
         state.jsonOpen = saved.jsonOpen || {};
         state.onlyNew = !!saved.onlyNew;
         if (saved.view === 'session') state.view = 'session';
+        state.timelineOpen = !!saved.timelineOpen;
         state.paneSort = saved.paneSort || null;
         var at = -1;
         requests.forEach(function (r, i) { if (r.info.index === saved.index) at = i; });

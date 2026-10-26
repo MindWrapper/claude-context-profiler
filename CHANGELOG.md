@@ -7,7 +7,7 @@ Versions follow [Semantic Versioning](https://semver.org/); the version is `__ve
 
 - **Session** tab: the session as Claude Code shows it, each subagent's steps under its Agent call.
 - The timeline has one row per conversation: subagents under the one that started them, side calls
-  at the bottom.
+  at the bottom. It starts folded.
 - The page shows the session's folder and git branch.
 - « » and Home/End jump to the first and the last request.
 

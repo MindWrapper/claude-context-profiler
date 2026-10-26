@@ -37,8 +37,8 @@ You need [uv](https://docs.astral.sh/uv/) and Claude Code on your PATH.
    - **What a request is made of:** tools, system prompt, skills, MCP servers and messages, biggest
      first. Click any part to read it, or search for a word.
    - **What each request adds:** new parts have a blue dot, and **Only new** hides the rest.
-   - **What the cache did:** each bar in the timeline shows what was read from the cache, written to
-     it, or sent fresh.
+   - **What the cache did:** open the **timeline** at the top: each bar shows what was read from the
+     cache, written to it, or sent fresh.
    - **Where the subagents ran:** each subagent gets its own row in the timeline, under the
      conversation that started it.
    - **What the session used:** "used 3×" next to the tools, skills and servers Claude called.

@@ -54,7 +54,7 @@ because `profile.py` would shadow the standard library's `profile` module.
 ## The timeline
 
 The top of the page is laid out like a profiler's charts: a toolbar that steps through the requests
-with a legend of the bar colors, then one row per chain (`chain_links`), named in a column on the
+with a legend of the bar colors, then, unless folded (the default), one row per chain (`chain_links`), named in a column on the
 left as a tree: the main conversation on top, each subagent under the chain that started it, side
 calls (a chain without tools) at the bottom. A subagent is matched to its Agent call by the prompt,
 which its first message holds. Each request is one bar, its height the prompt's tokens on one scale
