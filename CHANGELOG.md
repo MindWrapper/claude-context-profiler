@@ -9,6 +9,7 @@ Versions follow [Semantic Versioning](https://semver.org/); the version is `__ve
 - The timeline has one row per conversation: subagents under the one that started them, side calls
   at the bottom.
 - The page shows the session's folder and git branch.
+- « » and Home/End jump to the first and the last request.
 
 ## [0.3.0]
 

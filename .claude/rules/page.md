@@ -99,7 +99,8 @@ recorded text still goes in as `textContent`.
 
 One tree row and one timeline bar take Tab: the selected ones. In the tree, the arrow keys move the
 selection and open or close parts (`rowKey`), Enter selects and space ticks; on the timeline, the
-arrow keys step through the requests. A link that selects a part (`link`) takes Tab and Enter.
+arrow keys step through the requests, and Home and End go to the first and the last. The step buttons
+come before the request's label, so its length never moves them. A link that selects a part (`link`) takes Tab and Enter.
 
 ## The right pane
 

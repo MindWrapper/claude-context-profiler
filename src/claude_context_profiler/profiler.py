@@ -980,7 +980,8 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
        font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 .picker { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; padding:.5rem 9rem .5rem 1.5rem; border-bottom:1px solid var(--line); }
 .picker .step { font:16px/1 ui-monospace, monospace; padding:.1rem .55rem; }
-.tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; min-width:16rem; text-align:center; }
+.steps { display:flex; gap:.25rem; }
+.tl-label { font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
 .where { display:flex; gap:.5rem; align-items:baseline; font:600 13px ui-monospace, monospace; white-space:nowrap; margin-right:.6rem; }
 .where .branch { font-weight:400; color:var(--muted); }
 .legend { margin-left:auto; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:.9rem; font:12px ui-monospace, monospace; color:var(--muted); white-space:nowrap; }
@@ -1223,17 +1224,22 @@ JS = r"""
             box.appendChild(at);
         }
         var info = root().info, own = chainOf(root());
-        var prev = el('button', 'step', '\u2039'), next = el('button', 'step', '\u203a');
-        prev.title = 'previous request (\u2190)'; next.title = 'next request (\u2192)';
-        prev.disabled = state.req === 0; next.disabled = state.req === requests.length - 1;
-        prev.onclick = function () { select(state.req - 1, state.path); };
-        next.onclick = function () { select(state.req + 1, state.path); };
-        box.appendChild(prev);
+        // The buttons come first, together, so the label's length never moves them.
+        var steps = el('span', 'steps'), last = requests.length - 1;
+        [['\u00ab', 'first request (Home)', 0, state.req === 0], ['\u2039', 'previous request (\u2190)', state.req - 1, state.req === 0],
+         ['\u203a', 'next request (\u2192)', state.req + 1, state.req === last], ['\u00bb', 'last request (End)', last, state.req === last]]
+            .forEach(function (b) {
+                var button = el('button', 'step', b[0]);
+                button.title = b[1];
+                button.disabled = b[3];
+                button.onclick = function () { select(b[2], state.path); };
+                steps.appendChild(button);
+            });
+        box.appendChild(steps);
         box.appendChild(el('span', 'tl-label', 'request ' + (state.req + 1) + ' of ' + requests.length + ' \u00b7 ' +
             (failed(info) ? (info.status >= 400 ? 'HTTP ' + info.status : 'aborted') : n(info.prompt_in) + ' tokens') +
             ((info.new || []).length ? ' \u00b7 +' + n(root().newTok) + ' new' : '') +
             (own.kind !== 'main' ? ' \u00b7 ' + chainName(own) : '')));
-        box.appendChild(next);
         var legend = el('div', 'legend');
         [['tl-fresh', 'fresh'], ['tl-write', 'cache write'], ['tl-read', 'cache read']].forEach(function (pair) {
             var item = el('span');
@@ -2020,6 +2026,8 @@ JS = r"""
         if (ev.key === '/' && state.view === 'request') { ev.preventDefault(); $('search').focus(); return; }
         if (ev.key === 'ArrowRight' && state.req < requests.length - 1) select(state.req + 1, state.path);
         if (ev.key === 'ArrowLeft' && state.req > 0) select(state.req - 1, state.path);
+        if (ev.key === 'Home' && state.req > 0) { ev.preventDefault(); select(0, state.path); }
+        if (ev.key === 'End' && state.req < requests.length - 1) { ev.preventDefault(); select(requests.length - 1, state.path); }
     });
     var saved = restore();
     if (saved) {
@@ -2091,7 +2099,7 @@ def render_page(run_dir: Path, profile: dict) -> str:
 <title>{esc(where(profile))}context profile {esc(run_dir.name)}</title>
 <style>{CSS}</style></head>
 <body>
-<div class="picker" id="picker" title="&larr; &rarr; switch request"></div>
+<div class="picker" id="picker" title="&larr; &rarr; switch request, Home and End go to the first and last"></div>
 <div class="charts" id="charts"></div>
 <div class="split">
   <div class="tree">
