@@ -223,12 +223,21 @@ def build_exchanges(records: list[dict]) -> list[dict]:
     exchanges = []
     previous_by_chain: dict[str, dict] = {}
     chain_numbers: dict[str, int] = {}
+    current: dict[str, str] = {}  # first message's key -> the chain it leads to now
 
     for record in records:
         body = record["request_json"]
-        key = chain_key(body)
-        chain_numbers.setdefault(key, len(chain_numbers) + 1)
+        first = chain_key(body)
+        key = current.get(first, first)
         previous = previous_by_chain.get(key)
+        # A conversation keeps its messages as it goes on; Claude Code may rewrite older ones, but
+        # their number only grows. Fewer by two or more is another conversation that starts the same
+        # way: the same first message after /clear, or a subagent given the prompt an earlier one had.
+        # Two subagents that start on one prompt at the same moment still share a chain.
+        if previous and len(body.get("messages") or []) < len(previous["messages"]) - 1:
+            key = current[first] = f"{first}.{len(chain_numbers)}"
+            previous = None
+        chain_numbers.setdefault(key, len(chain_numbers) + 1)
 
         messages = body.get("messages") or []
         tools = body.get("tools") or []
