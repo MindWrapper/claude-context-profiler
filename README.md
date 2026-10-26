@@ -74,9 +74,15 @@ profiler never changes your config itself.
 
 ### How do I read the timeline?
 
-Each bar is one request, as tall as its prompt: purple was read from the cache, orange written to
-it, blue sent fresh, and red failed. Each conversation has a row, with subagents under the one that
-started them and side calls at the bottom.
+Each bar is one request; the bigger its prompt, the taller the bar. The colors:
+
+- purple: read from the cache
+- orange: written to the cache
+- blue: sent fresh
+- red: the request failed
+
+Each row is one conversation. Subagents sit under the conversation that started them, and side calls
+are at the bottom.
 
 ### How do I find what to cut?
 
