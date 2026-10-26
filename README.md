@@ -138,12 +138,9 @@ a skill, a subagent type or an MCP server: undo the change the Disable prompt ma
 
 ## Limits
 
-- Bedrock, Vertex and Foundry ignore the base URL that recording relies on. The profiler then runs
-  Claude Code without recording, as it does whenever the recorder cannot start.
 - The recorder connects to the API directly, with Python's own certificates. Behind a corporate
   proxy (`HTTPS_PROXY`) or a network that needs extra certificates (`NODE_EXTRA_CA_CERTS`), Claude
-  Code may reach the API while the recorder cannot, and the recorded session's requests fail. Run
-  `claude` itself there.
+  Code may reach the API while the recorder cannot, and the recorded session's requests fail.
 - The Claude desktop app cannot be recorded: it sets `ANTHROPIC_BASE_URL` itself and does not let
   a session override it. Record a terminal session on the same config instead. It comes close: the
   app adds only a few tools of its own.
