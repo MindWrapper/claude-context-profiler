@@ -1,6 +1,7 @@
-"""Take docs/screenshot.png from a recording: the last request that adds something to the one before,
-with Only new on, so the tree shows the new parts with their blue dots and the right pane shows the
-first of them. The timeline above, opened, shows how the context grew.
+"""Take docs/screenshot.png from a recording: the main conversation's last request, its tools open
+and sorted by size, the three biggest the session never used ticked for the Disable prompt, and
+the biggest of those in the right pane. The timeline above, opened, shows how the context grew, with the subagents' rows under the
+main conversation.
 Usage: python3 shot.py RUN_DIR OUT.png
 """
 
@@ -35,25 +36,29 @@ def find_chrome() -> str:
     raise SystemExit("shot: no Chrome or Chromium found")
 
 
-def last_with_news(run_dir: Path) -> tuple[int, str]:
-    """The position of the last request that adds parts to the previous one, and its first new part."""
+def main_request(run_dir: Path) -> tuple[int, str, list[str]]:
+    """The position of the main conversation's last request, and the path and pick keys ("tool: NAME")
+    of its three biggest tools that the session never used, as the README advises to cut."""
     calls = [r for r in reader.load_run(run_dir) if reader.is_messages_call(r)]
-    requests = profiler.build_profile(reader.build_exchanges(calls))["requests"]
-    for position in range(len(requests) - 1, -1, -1):
-        new = requests[position]["info"]["new"]
-        if new:
-            return position, new[0]
-    raise SystemExit("shot: no request adds anything to the one before; record a session with a tool call")
+    profile = profiler.build_profile(reader.build_exchanges(calls))
+    position = next(c["last"] for c in profile["chains"] if c["kind"] == "main")
+    tools = next((n for n in profile["requests"][position]["children"] if n["path"] == "tools"), None)
+    key = lambda n: f"{n['pick']['kind']}: {n['pick']['name']}"  # noqa: E731
+    unused = [n for n in tools["children"] if n.get("pick") and not profile["usage"].get(key(n))] if tools else []
+    biggest = sorted(unused, key=lambda n: -n["chars"])
+    if not biggest:
+        raise SystemExit("shot: the main conversation's last request has no unused tools")
+    return position, biggest[0]["path"], [key(n) for n in biggest[:3]]
 
 
 def main() -> int:
     run_dir, out = Path(sys.argv[1]), Path(sys.argv[2]).resolve()
     html = (run_dir / "context_profiler.html").read_text(encoding="utf-8")
     title = re.search(r"<title>(.*?)</title>", html).group(1)
-    position, path = last_with_news(run_dir)
+    position, path, picks = main_request(run_dir)
     # The page restores its view from sessionStorage; seed it before the page script runs.
-    state = {"req": position, "path": path, "sortBySize": True, "onlyNew": True, "timelineOpen": True,
-             "open": {"request": True, "messages": True}}
+    state = {"req": position, "path": path, "sortBySize": True, "timelineOpen": True,
+             "open": {"request": True, "tools": True}, "picked": {key: True for key in picks}}
     seed = "<script>sessionStorage.setItem(%s, %s);</script>" % (
         json.dumps("profile:" + title), json.dumps(json.dumps(state)))
     with tempfile.TemporaryDirectory() as tmp:
