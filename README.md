@@ -1,7 +1,9 @@
 # claude-context-profiler
 
-See exactly what Claude Code sends to the model, request by request, live as you work: every tool,
-skill, MCP server and message, with its tokens and its full text.
+See exactly what Claude Code sends to the model. It helps you:
+
+- cut your token spend
+- understand Claude Code one level deeper
 
 ## Quick start
 
