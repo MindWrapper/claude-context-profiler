@@ -59,7 +59,7 @@ left as a tree: the main conversation on top, each subagent under the chain that
 calls (a chain without tools) at the bottom. A subagent is matched to its Agent call by the prompt,
 which its first message holds. Each request is one bar, its height the prompt's tokens on one scale
 for all rows, so the rows show how each context grew; a row is as tall as its tallest bar, and the
-selected request is lit down every row. The requests linked to it are tinted: for a subagent's
+selected request is lit down every row, and its conversation's row across the bars, behind them. The requests linked to it are tinted: for a subagent's
 request, the request that started the subagent and the one whose new messages carry its result; for
 a request that started subagents, their first requests and those results. The Agent call's nodes
 carry the call id (`call`), so the tree and the pane link the two ways. A gap starts a new main conversation,

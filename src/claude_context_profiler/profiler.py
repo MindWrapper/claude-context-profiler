@@ -996,7 +996,8 @@ body { margin:0; background:var(--bg); color:var(--fg); display:flex; flex-direc
 .lane-name small { font-size:11px; opacity:.8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .lane-name:hover { color:var(--fg); }
 .lane-name.on { color:var(--fg); background:var(--sel); }
-.timeline { flex:1; min-width:0; display:flex; align-items:flex-start; gap:2px; overflow-x:auto; position:relative; padding:6px .8rem; }
+.timeline { flex:1; min-width:0; display:flex; align-items:flex-start; gap:2px; overflow-x:auto; position:relative; z-index:0; padding:6px .8rem; }
+.tl-band { position:absolute; left:0; z-index:-1; background:var(--sel); pointer-events:none; }
 .timeline.dense { gap:0; }
 .timeline.dense .tl-col { min-width:1px; }
 .timeline.dense .tl-bar { border-radius:0; }
@@ -1345,6 +1346,16 @@ JS = r"""
             strip.appendChild(col);
         });
         charts.appendChild(strip);
+        // The selected conversation's row is lit across the bars too, behind them, in line with its
+        // name on the left.
+        if (strip.firstChild) {
+            var cell = strip.firstChild.children[chainOf(root()).lane];
+            var band = el('div', 'tl-band');
+            band.style.top = cell.offsetTop + 'px';
+            band.style.height = cell.offsetHeight + 'px';
+            band.style.width = strip.scrollWidth + 'px';
+            strip.insertBefore(band, strip.firstChild);
+        }
         charts.scrollTop = scrollTop;
         // In a narrow window the strip scrolls; keep the selected bar in view.
         var on = strip.querySelector('.tl-col.on');
