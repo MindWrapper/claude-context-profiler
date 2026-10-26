@@ -7,6 +7,8 @@ Versions follow [Semantic Versioning](https://semver.org/); the version is `__ve
 
 - The Disable prompt says that an MCP server is blocked wherever it is defined, and follows
   `CLAUDE_CONFIG_DIR`.
+- The Disable prompt has Claude take each MCP server's exact name from `claude mcp list`, and check
+  there that it is blocked.
 
 ## [0.3.0]
 

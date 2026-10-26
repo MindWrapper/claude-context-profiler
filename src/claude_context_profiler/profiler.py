@@ -1916,11 +1916,16 @@ JS = r"""
             // A server that sent no instructions is known only as its tool names spell it.
             servers.forEach(function (name) {
                 L.push('- ' + JSON.stringify({ serverName: name }) + ((data.servers || []).indexOf(name) < 0 ?
-                       ' (as its tool names spell it: use the name `claude mcp list` shows)' : ''));
+                       ' (as its tool names spell it)' : ''));
             });
+            // An entry that is spelled differently blocks nothing, and nothing says so.
+            L.push('An entry blocks only a server of exactly that name. Run `claude mcp list` first and use each ' +
+                   'name as it shows it; a claude.ai connector is named like "claude.ai Todoist".');
             L.push('');
         }
         L.push('Before you write, show me the exact change and ask me. Leave everything else in the file as it is.');
+        if (servers.length) L.push('After you write, run `claude mcp list` again and check that each blocked ' +
+                                   'server is no longer listed.');
         L.push('Then tell me that the context is smaller from my next session on, and that I can bring an item ' +
                'back by deleting its entry.');
         return L.join('\n') + '\n';

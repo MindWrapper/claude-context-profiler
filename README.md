@@ -123,6 +123,12 @@ Yes: set `CLAUDE_CONTEXT_PROFILER_HOME` to another folder. The default is
 Yes. Clone the repo and run `PYTHONPATH=CLONE/src python3 -m claude_context_profiler`; it needs
 only Python 3.9 or later.
 
+### How do I check that an MCP server is really off?
+
+Run `claude mcp list`: a blocked server is no longer listed. The first request of a session can't
+tell you, because Claude Code connects servers in the background and the first request often goes
+out before they are ready. When Claude later searches for a tool, it waits for them.
+
 ### What happens if I disable a Claude Code tool and later need it?
 
 Claude no longer has the tool, so it works around it, for example with Bash, or tells you it can't
