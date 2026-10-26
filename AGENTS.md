@@ -58,5 +58,6 @@ A change to the launcher, proxy or page also needs the real-session check in its
   pull request from a branch; it is squash-merged once CI passes. See `CONTRIBUTING.md`.
 - One change per commit. The subject starts with an imperative verb ("Add …", "Rename …").
 - A change in behavior updates `README.md` and the **Unreleased** section of `CHANGELOG.md` in the
-  same commit, and this file or a rules file when the design changes.
+  same commit, and this file or a rules file when the design changes. A changelog entry is one short
+  line a user would care about; the details go in the commit.
 - Add tests only when the owner asks.

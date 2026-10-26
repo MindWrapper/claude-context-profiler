@@ -28,8 +28,8 @@ session and look at the page: the steps are in [.claude/rules/recording.md](.cla
 ## Pull requests
 
 1. Fork the repo and make your change on a branch.
-2. Keep one change per pull request. If a user would notice it, update `README.md` and add a line
-   under **Unreleased** in `CHANGELOG.md` in the same pull request.
+2. Keep one change per pull request. If a user would notice it, update `README.md` and add one short
+   line under **Unreleased** in `CHANGELOG.md` in the same pull request.
 3. Open the pull request against `main`. It is squash-merged once CI passes and it has been reviewed.
 
 Report security problems privately, as [SECURITY.md](SECURITY.md) describes. Everyone taking part
