@@ -1,9 +1,14 @@
 # claude-context-profiler
 
-See exactly what Claude Code sends to the model. It helps you:
+Claude Code's context fills up easily with tools, skills and MCP servers you never use. They are
+sent with every request: you pay for them, they take room in the context window, and they distract
+the model. And you can't see any of this from inside Claude Code.
 
-- cut your token spend
-- understand Claude Code one level deeper
+claude-context-profiler records a Claude Code session and shows every request it sends to the model,
+part by part. It helps you:
+
+- find what you never use, and switch it off
+- understand how Claude Code works under the hood
 
 ## Quick start
 
