@@ -770,9 +770,11 @@ def chain_links(exchanges: list[dict]) -> list[dict]:
             args = tool_input(block)
             prompt = str(args.get("prompt") or "").strip()
             for chain in chains.values():
-                if chain["kind"] == "main" and chain["first"] > position and prompt and prompt in first_text(exchanges[chain["first"]]):
+                opens = first_text(exchanges[chain["first"]])
+                if chain["kind"] == "main" and chain["first"] > position and prompt and prompt in opens:
                     chain.update(kind="agent", spawn=position, call=block.get("id", ""),
-                                 agent=args.get("subagent_type") or "general-purpose", task=args.get("description") or "")
+                                 agent=args.get("subagent_type") or "general-purpose",
+                                 task=args.get("description") or "")
                     break
     for chain in chains.values():
         if chain["kind"] != "agent":
@@ -810,11 +812,8 @@ def chain_links(exchanges: list[dict]) -> list[dict]:
 MAIN_ARGS = ("command", "file_path", "pattern", "url", "query", "skill", "description", "path", "prompt")
 
 
-def first_line(text: str, limit: int = 160) -> str:
-    for line in text.splitlines():
-        if line.strip():
-            return shorten(line.strip(), limit)
-    return ""
+# How much of a text a session step shows: its first line, cut to this.
+STEP_LIMIT = 160
 
 
 def call_label(name: str, args: dict) -> str:
@@ -826,7 +825,7 @@ def call_label(name: str, args: dict) -> str:
     main = next((args[key] for key in MAIN_ARGS if isinstance(args.get(key), str) and args[key].strip()), None)
     if main is None:
         main = next((value for value in args.values() if isinstance(value, str) and value.strip()), "")
-    return f"{name}({first_line(main, 80)})"
+    return f"{name}({shorten(first_line(main), 80)})"
 
 
 def prompt_text(message: dict) -> str | None:
@@ -905,7 +904,8 @@ def session_steps(exchanges: list[dict], links: list[dict]) -> list[dict]:
             content = message.get("content")
             for block in content if isinstance(content, list) else []:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
-                    results.setdefault(block.get("tool_use_id", ""), (first_line(block_text(block)), bool(block.get("is_error"))))
+                    line = shorten(first_line(block_text(block)), STEP_LIMIT)
+                    results.setdefault(block.get("tool_use_id", ""), (line, bool(block.get("is_error"))))
     agents = {chain["call"]: chain for chain in links if chain["kind"] == "agent"}
     branch = side_questions(exchanges)
 
@@ -921,19 +921,20 @@ def session_steps(exchanges: list[dict], links: list[dict]) -> list[dict]:
                 text = prompt_text(exchange["messages"][i])
                 if text and (i, text) not in typed:
                     typed.add((i, text))
-                    steps.append({"kind": "prompt", "req": position, "path": f"messages/{i}", "label": first_line(text)})
+                    steps.append({"kind": "prompt", "req": position, "path": f"messages/{i}",
+                                  "label": shorten(first_line(text), STEP_LIMIT)})
             for j, block in enumerate(exchange["answer"]["blocks"]):
                 step = {"req": position, "path": f"answer/{j}"}
                 if block.get("type") == "text" and (block.get("text") or "").strip():
-                    step.update(kind="text", label=first_line(block["text"]))
+                    step.update(kind="text", label=shorten(first_line(block["text"]), STEP_LIMIT))
                 elif block.get("type") in ("tool_use", "server_tool_use"):
                     step.update(kind="tool", label=call_label(block.get("name", "?"), tool_input(block)))
                     call = block.get("id", "")
                     if call in agents:
                         sub = agents[call]
                         done = "Done" if sub["back"] is not None else "No result yet"
-                        step.update(kind="agent", children=steps_of(sub),
-                                    result=f"{done} \u00b7 {sub['requests']} request{'' if sub['requests'] == 1 else 's'}")
+                        count = f"{sub['requests']} request{'' if sub['requests'] == 1 else 's'}"
+                        step.update(kind="agent", children=steps_of(sub), result=f"{done} \u00b7 {count}")
                     elif call in results:
                         step["result"], step["error"] = results[call]
                 else:
